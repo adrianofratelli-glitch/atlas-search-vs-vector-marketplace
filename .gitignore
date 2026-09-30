@@ -1,0 +1,33 @@
+# Env
+.env
+*.env
+.env.bak
+*.env.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
+nohup.out
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+**/.vite/
+frontend/.env
