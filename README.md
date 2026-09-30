@@ -102,3 +102,7 @@ React 18 + Vite + LeafyGreen · FastAPI · LangGraph (ReAct) · Claude Sonnet 4.
 MongoDB and LLM calls have pool limits, socket and model timeouts, and retries; the AI routes share a bounded-concurrency gate and return 429 under saturation. Aggregation errors are sanitized before reaching clients. The image runs as UID 10001, but the API has no user authentication: put it behind an IdP/API gateway, TLS, and per-tenant quotas before any external exposure.
 
 Component details: [`frontend/README.md`](frontend/README.md) · [`backend/README.md`](backend/README.md).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
