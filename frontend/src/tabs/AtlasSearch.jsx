@@ -81,7 +81,7 @@ export default function AtlasSearch() {
       <form className="query-toolbar" aria-label="Buscar no catálogo" aria-busy={loading} onSubmit={(event) => { event.preventDefault(); run(); }}>
         <div className="query-toolbar__field">
           <span className="query-toolbar__label">Consulta</span>
-          <TextInput type="search" aria-labelledby="atlas-search-title" placeholder="Ex.: notebook gamer, adidass, samsumg…"
+          <TextInput type="search" aria-labelledby="atlas-search-title" placeholder="Ex.: notebook gamer, adidass, samsumg…" aria-label="Ex.: notebook gamer, adidass, samsumg…"
             value={q} onChange={(e) => setQ(e.target.value)}
             darkMode sizeVariant="large" />
         </div>

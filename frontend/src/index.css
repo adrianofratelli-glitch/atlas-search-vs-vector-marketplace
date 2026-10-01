@@ -1,19 +1,17 @@
-/* Tipografia — mesmo par da pitch five-pillar: Outfit + JetBrains Mono */
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
-
+/* Tipografia — mesmo par da pitch five-pillar: Special Gothic + Source Code Pro */
 :root {
-  --bg-primary: #001E2B;
-  --bg-secondary: #112733;
-  --bg-card: #1C2D38;
-  --bg-card-hover: #263C49;
-  --border-subtle: #3D4F58;
+  --bg-primary: #061621;
+  --bg-secondary: #001e2b;
+  --bg-card: #0a2633;
+  --bg-card-hover: #10303f;
+  --border-subtle: #2a424d;
   --border-accent: rgba(0, 237, 100, 0.25);
-  --text-pri: #E8EDEB;
-  --text-sec: #C1C7C6;
-  --text-muted: #889397;
+  --text-pri: #fdfff5;
+  --text-sec: #cdd5ce;
+  --text-muted: #9ea2a1;
   --accent: #00ED64;
   --accent-glow: rgba(0, 237, 100, 0.1);
-  --link: #0498EC;
+  --link: #3d9dff;
   color-scheme: dark;
 }
 
@@ -24,7 +22,7 @@ html, body, #root {
   padding: 0;
   min-height: 100%;
   background-color: var(--bg-primary);
-  font-family: "Outfit", "Helvetica Neue", Arial, sans-serif;
+  font-family: "Special Gothic", "Helvetica Neue", Arial, sans-serif;
   color: var(--text-sec);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -46,9 +44,9 @@ body::after {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #5C6C75; }
+::-webkit-scrollbar-thumb:hover { background: #8a9a9d; }
 
-code, pre { font-family: "JetBrains Mono", Menlo, monospace; }
+code, pre { font-family: "Source Code Pro", Menlo, monospace; }
 
 ::selection { background: rgba(0,237,100,0.25); }
 
@@ -59,7 +57,7 @@ code, pre { font-family: "JetBrains Mono", Menlo, monospace; }
 
 /* Kicker — label mono com traço, acima do título (estilo .pillar-badge) */
 .kicker {
-  font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600;
+  font-family: "Source Code Pro", monospace; font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent);
   display: flex; align-items: center; gap: 8px;
 }
@@ -67,7 +65,7 @@ code, pre { font-family: "JetBrains Mono", Menlo, monospace; }
 
 /* Section label — mono com quadradinho (estilo .flow-heading) */
 .section-label {
-  font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600;
+  font-family: "Source Code Pro", monospace; font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent);
   display: flex; align-items: center; gap: 9px; margin-bottom: 10px;
 }
@@ -75,7 +73,7 @@ code, pre { font-family: "JetBrains Mono", Menlo, monospace; }
 
 /* Pills do header (estilo .nav-pill) */
 .hdr-pill {
-  font-family: "JetBrains Mono", monospace; font-size: 10.5px; font-weight: 600;
+  font-family: "Source Code Pro", monospace; font-size: 10.5px; font-weight: 600;
   padding: 3px 11px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.06em;
   border: 1px solid; transition: all 0.2s;
 }
@@ -92,12 +90,12 @@ code, pre { font-family: "JetBrains Mono", Menlo, monospace; }
 .stat-item:last-child { border-right: none; }
 .stat-item:hover { background: rgba(255,255,255,0.02); }
 .stat-val {
-  font-size: 30px; font-weight: 800; font-family: "JetBrains Mono", monospace;
+  font-size: 30px; font-weight: 800; font-family: "Source Code Pro", monospace;
   letter-spacing: -0.03em; line-height: 1;
 }
 .stat-label {
   font-size: 10.5px; color: var(--text-muted); margin-top: 7px;
-  font-family: "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: 0.08em;
+  font-family: "Source Code Pro", monospace; text-transform: uppercase; letter-spacing: 0.08em;
 }
 .stat-sub { font-size: 10px; color: var(--text-muted); margin-top: 3px; opacity: 0.7; }
 
@@ -146,7 +144,7 @@ code, pre { font-family: "JetBrains Mono", Menlo, monospace; }
 /* Botão copiar do bloco MQL */
 .copy-btn {
   background: rgba(0,237,100,0.08); border: 1px solid rgba(0,237,100,0.25);
-  color: var(--accent); font-size: 11px; font-family: "JetBrains Mono", monospace;
+  color: var(--accent); font-size: 11px; font-family: "Source Code Pro", monospace;
   font-weight: 600; padding: 3px 12px; border-radius: 20px; cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }

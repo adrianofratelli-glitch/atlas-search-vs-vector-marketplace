@@ -60,7 +60,7 @@ export default function SearchVsVector() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
-          <TextInput aria-labelledby="svv-title" placeholder="academia em casa, home office…"
+          <TextInput aria-labelledby="svv-title" placeholder="academia em casa, home office…" aria-label="academia em casa, home office…"
             value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()} darkMode />
         </div>

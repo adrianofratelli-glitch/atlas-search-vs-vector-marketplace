@@ -138,7 +138,7 @@ export default function AiAgent() {
       {/* Input */}
       <div style={{ display: "flex", gap: 12, marginTop: 16, alignItems: "flex-end" }}>
         <div style={{ flex: 1 }}>
-          <TextInput aria-labelledby="agent-title" placeholder="Pergunte sobre produtos…"
+          <TextInput aria-labelledby="agent-title" placeholder="Pergunte sobre produtos…" aria-label="Pergunte sobre produtos…"
             value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()} darkMode />
         </div>

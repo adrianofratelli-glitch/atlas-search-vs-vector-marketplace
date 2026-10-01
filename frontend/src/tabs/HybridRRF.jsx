@@ -92,7 +92,7 @@ export default function HybridRRF() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", margin: "12px 0" }}>
         <div style={{ flex: 1 }}>
-          <TextInput aria-labelledby="hybrid-title" placeholder="tênis de corrida, fone sem fio…"
+          <TextInput aria-labelledby="hybrid-title" placeholder="tênis de corrida, fone sem fio…" aria-label="tênis de corrida, fone sem fio…"
             value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()} darkMode />
         </div>

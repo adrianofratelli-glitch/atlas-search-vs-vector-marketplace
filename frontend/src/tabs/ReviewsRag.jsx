@@ -37,7 +37,7 @@ export default function ReviewsRag() {
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 280 }}>
-          <TextInput aria-labelledby="rag-title" placeholder="Ex: ASUS ZenBook, Royal Canin, Garmin…"
+          <TextInput aria-labelledby="rag-title" placeholder="Ex: ASUS ZenBook, Royal Canin, Garmin…" aria-label="Ex: ASUS ZenBook, Royal Canin, Garmin…"
             value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()} darkMode />
         </div>

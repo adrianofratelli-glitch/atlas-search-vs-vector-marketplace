@@ -35,7 +35,7 @@ export default function Similares() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 280 }}>
-          <TextInput aria-labelledby="similares-title" placeholder="Ex: Nike Air Max, Duna, Notebook Dell…"
+          <TextInput aria-labelledby="similares-title" placeholder="Ex: Nike Air Max, Duna, Notebook Dell…" aria-label="Ex: Nike Air Max, Duna, Notebook Dell…"
             value={nome} onChange={(e) => setNome(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()} darkMode />
         </div>

@@ -2,11 +2,11 @@ import { palette } from "@leafygreen-ui/palette";
 
 // Palette in the five-pillar pitch style (MongoDB Atlas dark)
 export const T = {
-  bg:        palette.black,            // #001E2B — Atlas dark background
-  surface:   palette.gray.dark4,        // #112733 — secondary panels
-  surface2:  palette.gray.dark3,        // #1C2D38 — elevated surfaces
+  bg:        palette.black,            // #061621 — Atlas dark background
+  surface:   palette.gray.dark4,        // #001e2b — secondary panels
+  surface2:  palette.gray.dark3,        // #0a2633 — elevated surfaces
   sidebar:   palette.black,
-  border:    palette.gray.dark2,        // #3D4F58 — dark-mode divider
+  border:    palette.gray.dark2,        // #2a424d — dark-mode divider
   borderSub: palette.gray.dark2,
   borderAcc: "rgba(0,237,100,0.25)",   // border-accent
 
@@ -24,8 +24,8 @@ export const T = {
 
   codeBg:    palette.gray.dark4,
 
-  font: "'Outfit', 'Helvetica Neue', Arial, sans-serif",
-  mono: "'JetBrains Mono', Menlo, monospace",
+  font: "'Special Gothic', 'Helvetica Neue', Arial, sans-serif",
+  mono: "'Source Code Pro', Menlo, monospace",
 };
 
 export const fmtCount = (n) => {
