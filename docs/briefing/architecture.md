@@ -13,7 +13,7 @@ Tese central: um cluster Atlas único cobre busca lexical, busca vetorial e busc
 - **Backend**: Python, FastAPI (`backend/main.py`), PyMongo direto (sem ODM), LangChain/LangGraph para o agente.
 - **Frontend**: React 18 + Vite + LeafyGreen (design system MongoDB). React 18 é fixo — LeafyGreen não suporta React 19 ainda. `vite-plugin-node-polyfills` é obrigatório (dependência do LeafyGreen precisa de `Buffer`) — removê-lo não quebra o build, só deixa a página em branco.
 - **Banco**: MongoDB Atlas — Atlas Search (lexical), Vector Search (autoEmbed com modelo `voyage-4`), Aggregation Framework.
-- **LLM**: Anthropic Claude via gateway próprio (ver `backend/agent.py` — usa `ChatAnthropic` do LangChain apontando pra `ANTHROPIC_BASE_URL`/`api-key` custom, não a API pública direto).
+- **LLM**: Anthropic Claude via gateway próprio (ver `backend/agent.py` — usa `ChatAnthropic` do LangChain apontando pra `ANTHROPIC_BASE_URL` com `Authorization: Bearer` + `x-api-key`, não a API pública direto).
 - **Observabilidade**: logging estruturado + `/api/metrics` e `/metrics` (Prometheus) em `backend/observability.py`.
 
 ## Componentes

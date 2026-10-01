@@ -13,16 +13,16 @@ llm = ChatAnthropic(
     model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
     temperature=0,
     max_tokens=1024,
-    api_key="dummy",
+    api_key=os.getenv("ANTHROPIC_API_KEY", ""),
     anthropic_api_url=os.getenv("ANTHROPIC_BASE_URL"),
-    default_headers={"api-key": os.getenv("ANTHROPIC_API_KEY", "")},
+    default_headers={"Authorization": "Bearer " + os.getenv("ANTHROPIC_API_KEY", "")},
     timeout=float(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "45")),
     max_retries=int(os.getenv("ANTHROPIC_MAX_RETRIES", "2")),
 )
 ```
 (`backend/agent.py:25`)
 
-Ponto que costuma gerar dúvida em auditoria: `api_key="dummy"` não é uma chave real — a autenticação de fato acontece via header custom `api-key` (`default_headers`), porque as PoVs deste ambiente falam com o Claude através de um gateway próprio (Grove/APIM), não direto com `api.anthropic.com`. `ANTHROPIC_BASE_URL` aponta pro gateway. `temperature=0` é proposital — o agente precisa ser determinístico o suficiente pra escolher ferramenta de forma consistente, não criativo.
+Ponto que costuma gerar dúvida em auditoria: a chave vai em `api_key` (o SDK a envia em `x-api-key`) e também em `Authorization: Bearer` (`default_headers`). Um placeholder como `"dummy"` NÃO funciona: o gateway valida `x-api-key` primeiro e devolve 401. Isso porque as PoVs deste ambiente falam com o Claude através de um gateway próprio (Grove/APIM), não direto com `api.anthropic.com`. `ANTHROPIC_BASE_URL` aponta pro gateway. `temperature=0` é proposital — o agente precisa ser determinístico o suficiente pra escolher ferramenta de forma consistente, não criativo.
 
 Modelo separado para o RAG de reviews (`backend/reviews.py:17`): `claude-haiku-4-5` por padrão — sumarização de review é tarefa simples, Haiku entrega qualidade equivalente por custo bem menor.
 
