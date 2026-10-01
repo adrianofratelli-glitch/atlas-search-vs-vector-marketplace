@@ -26,9 +26,9 @@ llm = ChatAnthropic(
     model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
     temperature=0,
     max_tokens=1024,
-    api_key="dummy",
+    api_key=os.getenv("ANTHROPIC_API_KEY", ""),
     anthropic_api_url=os.getenv("ANTHROPIC_BASE_URL"),
-    default_headers={"api-key": os.getenv("ANTHROPIC_API_KEY", "")},
+    default_headers={"Authorization": "Bearer " + os.getenv("ANTHROPIC_API_KEY", "")},
     timeout=float(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "45")),
     max_retries=int(os.getenv("ANTHROPIC_MAX_RETRIES", "2")),
 )
