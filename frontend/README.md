@@ -5,7 +5,7 @@ componentes da MongoDB (LeafyGreen), consumindo o backend FastAPI via axios.
 
 ## Shell de apresentação
 
-O header segue a assinatura MongoDB Dark v3 do portfólio: marca compacta, status
+O header segue a assinatura MongoDB Dark Stage v4 do portfólio: marca compacta, status
 real do Atlas e uma capability rail com estado ativo explícito. Em desktop as
 sete jornadas ficam em uma linha; em tablet reorganizam-se em duas linhas; em
 mobile a rail tem scroll horizontal próprio e nunca provoca overflow da página.
@@ -21,7 +21,7 @@ resultados que o Atlas já devolveu.
 |--------------|-------------------------------------------------------------------|
 | Framework de UI | React 18 + Vite                                                |
 | Componentes  | `@leafygreen-ui/*` (design system da MongoDB)                     |
-| Tipografia   | Outfit + JetBrains Mono (Google Fonts)                            |
+| Tipografia   | Special Gothic + Source Code Pro (locais)                            |
 | HTTP         | axios                                                             |
 | Polyfills    | `vite-plugin-node-polyfills` (Buffer/process para deps do LeafyGreen) |
 
