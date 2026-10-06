@@ -5,7 +5,7 @@ import Badge from "@leafygreen-ui/badge";
 import Banner from "@leafygreen-ui/banner";
 import Toggle from "@leafygreen-ui/toggle";
 import { H3, Body, Subtitle } from "@leafygreen-ui/typography";
-import { search, facets } from "../api";
+import { search, facets, describeError } from "../api";
 import { T, fmtBRL } from "../theme";
 import ProductTable, { priceCol, MqlBlock } from "../components/ProductTable";
 
@@ -52,7 +52,7 @@ export default function AtlasSearch() {
       setLoading(false);
       const fac = await facetRequest;
       if (current === requestId.current) setFacetData(fac);
-    } catch (e) { if (current === requestId.current) setData({ error: `Falha na busca: ${e.message}` }); }
+    } catch (e) { if (current === requestId.current) setData({ error: `Falha na busca: ${describeError(e)}` }); }
     finally { if (current === requestId.current) { searchPending.current = false; setLoading(false); setFacetsLoading(false); } }
   };
 

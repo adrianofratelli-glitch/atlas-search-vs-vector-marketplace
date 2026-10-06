@@ -4,7 +4,7 @@ import TextInput from "@leafygreen-ui/text-input";
 import Button from "@leafygreen-ui/button";
 import Badge from "@leafygreen-ui/badge";
 import { H3, Body, Subtitle } from "@leafygreen-ui/typography";
-import { askAgent, getMetrics } from "../api";
+import { askAgent, getMetrics, describeError } from "../api";
 import { T } from "../theme";
 import Leaf from "../components/Leaf";
 
@@ -68,7 +68,7 @@ export default function AiAgent() {
                                   ms: Math.round(performance.now() - t0) }]);
       loadTokens();
     } catch (e) {
-      setHistory((h) => [...h, { role: "assistant", content: "Erro: " + (e.message || e), error: true }]);
+      setHistory((h) => [...h, { role: "assistant", content: "Erro: " + describeError(e), error: true }]);
     } finally { setLoading(false); }
   };
 

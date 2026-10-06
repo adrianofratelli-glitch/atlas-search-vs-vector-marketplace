@@ -5,7 +5,7 @@ import Badge from "@leafygreen-ui/badge";
 import Banner from "@leafygreen-ui/banner";
 import { H3, Body, Subtitle } from "@leafygreen-ui/typography";
 import ReactMarkdown from "react-markdown";
-import { reviewsRag } from "../api";
+import { reviewsRag, describeError } from "../api";
 import { T } from "../theme";
 import { MqlBlock } from "../components/ProductTable";
 
@@ -22,7 +22,7 @@ export default function ReviewsRag() {
     setQ(query);
     setLoading(true);
     try { setData(await reviewsRag(query)); }
-    catch (e) { setData({ error: `Falha ao resumir avaliações: ${e.message}` }); }
+    catch (e) { setData({ error: `Falha ao resumir avaliações: ${describeError(e)}` }); }
     finally { setLoading(false); }
   };
 
@@ -68,8 +68,16 @@ export default function ReviewsRag() {
                 <Badge variant={data.via === "atlas_search" ? "green" : "yellow"}>
                   {data.via === "atlas_search" ? "🔍 produto via Atlas Search" : "produto via catálogo (fallback)"}
                 </Badge>{" "}
-                <span style={{ fontSize: 12, color: T.text3 }}>· {data.total_analisado} reviews analisados</span>
+                <span style={{ fontSize: 12, color: T.text3 }}>· {data.total_analisado ?? 0} reviews analisados</span>
+                {data.injection_dropped > 0 && (
+                  <>{" "}<Badge variant="yellow">⚠ {data.injection_dropped} retida(s) pelo filtro de prompt injection</Badge></>
+                )}
               </div>
+              {data.degraded === "llm_unavailable" && (
+                <Banner variant="warning" darkMode style={{ marginBottom: 10 }}>
+                  Resumo indisponível: o gateway de IA não respondeu. As avaliações à direita vêm direto do MongoDB.
+                </Banner>
+              )}
               <div className="md" style={{ color: T.text, fontSize: 14, lineHeight: 1.6 }}>
                 <ReactMarkdown>{data.summary}</ReactMarkdown>
               </div>
@@ -85,6 +93,7 @@ export default function ReviewsRag() {
                   <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{"★".repeat(r.nota)}<span style={{ color: T.text3 }}>{"★".repeat(5 - r.nota)}</span></span>
                   <span style={{ fontSize: 11, color: T.text3, fontFamily: T.mono }}>👍 {r.util_count || 0}</span>
                 </div>
+                {r.suspeita_injection && <Badge variant="yellow">⚠ fora do resumo: texto com instrução suspeita</Badge>}
                 {r.titulo && <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginTop: 4 }}>{r.titulo}</div>}
                 <div style={{ fontSize: 12, color: T.text2, marginTop: 3 }}>{r.texto}</div>
               </div>

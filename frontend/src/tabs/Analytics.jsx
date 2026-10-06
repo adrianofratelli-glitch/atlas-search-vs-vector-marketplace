@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { H3, Body, Subtitle } from "@leafygreen-ui/typography";
 import Badge from "@leafygreen-ui/badge";
 import Banner from "@leafygreen-ui/banner";
-import { getAnalytics } from "../api";
+import { getAnalytics, describeError } from "../api";
 import { T, fmtBRL } from "../theme";
 import { MqlBlock } from "../components/ProductTable";
 
@@ -41,7 +41,7 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getAnalytics(full).then(setData).catch(() => setData({ error: "falha" })).finally(() => setLoading(false));
+    getAnalytics(full).then(setData).catch((e) => setData({ error: `Falha ao carregar analytics: ${describeError(e)}` })).finally(() => setLoading(false));
   }, [full]);
 
   const changeMode = (value) => {
