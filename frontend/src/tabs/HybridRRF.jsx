@@ -4,7 +4,7 @@ import Button from "@leafygreen-ui/button";
 import Badge from "@leafygreen-ui/badge";
 import Banner from "@leafygreen-ui/banner";
 import { H3, Body, Subtitle, InlineCode } from "@leafygreen-ui/typography";
-import { hybridNative, hybridScoreFusion } from "../api";
+import { hybridNative, hybridScoreFusion, describeError } from "../api";
 import { T } from "../theme";
 import ProductTable, { priceCol, MqlBlock } from "../components/ProductTable";
 
@@ -25,7 +25,7 @@ export default function HybridRRF() {
         score: () => hybridScoreFusion(q),
       };
       setData(await fetchers[useEngine]());
-    } catch (e) { setData({ error: `Falha na busca híbrida: ${e.message}` }); }
+    } catch (e) { setData({ error: `Falha na busca híbrida: ${describeError(e)}` }); }
     finally { setLoading(false); }
   };
 

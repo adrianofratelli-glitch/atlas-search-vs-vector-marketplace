@@ -56,13 +56,11 @@ npm run dev                 # http://localhost:5273
 
 ```
 src/
-├── api.js                 cliente axios e endpoints
+├── api.js                 cliente axios, endpoints e describeError (mensagens de erro legíveis)
 ├── theme.js               tokens de cor do MongoDB Atlas e formatadores
 ├── App.jsx                LeafyGreenProvider, layout e abas
 ├── components/
 │   ├── Leaf.jsx           logo da folha MongoDB
-│   ├── Sidebar.jsx        componente legado, fora do shell atual
-│   ├── KpiCard.jsx        componente legado, fora do shell atual
 │   └── ProductTable.jsx   tabela de resultados e bloco MQL
 └── tabs/
     ├── AtlasSearch.jsx    busca full-text (autocomplete, fuzzy, highlight)
@@ -91,16 +89,18 @@ npm run preview    # Serve o build localmente
 
 ## Smoke visual e fluxo real
 
-Com o `.env` configurado e acesso ao Atlas, o teste sobe backend e frontend,
-percorre as sete jornadas, valida teclado/overflow e captura 1440, 1154, 768 e
-360 px. A consulta ao Atlas exige rede liberada.
+Com o `.env` configurado e acesso ao Atlas, suba a aplicação apontando para o banco
+de teste e rode os dois testes de navegador (Playwright) a partir da raiz do repo:
 
 ```bash
-python3 /caminho/para/with_server.py \
-  --server "cd backend && ../.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8200" --port 8200 \
-  --server "cd frontend && env VITE_API_URL=http://127.0.0.1:8200 npm run dev -- --host 127.0.0.1 --port 5273 --strictPort" --port 5273 \
-  -- .venv/bin/python frontend/tests/ui_visual_smoke.py
+DB_NAME=marketplace_test bash start.sh
+.venv/bin/python frontend/tests/e2e_demo.py          # roteiro completo da demo (--no-ai pula LLM)
+.venv/bin/python frontend/tests/ui_visual_smoke.py   # shell, teclado e overflow em 1440/1154/768/360 px
 ```
 
-Defina `UPDATE_README_SCREENSHOT=1` para atualizar o screenshot público da aba
-Full-text em 1600×1000, somente com o cluster real e dados anonimizados.
+O `e2e_demo.py` percorre as sete jornadas, o drawer de MQL (sem segredos), duplo
+clique, refresh no meio do fluxo, query só com caracteres invisíveis (422 legível),
+prompt injection direta no agente e 360/768/1440 px sem scroll horizontal.
+
+Defina `UPDATE_README_SCREENSHOT=1` no smoke visual para atualizar o screenshot
+público da aba Full-text em 1600×1000, somente com o cluster da demo.

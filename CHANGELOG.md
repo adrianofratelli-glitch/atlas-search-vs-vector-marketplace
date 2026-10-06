@@ -1,8 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-10-06)
 
 - UI: layout MongoDB 2026 "Dark Stage v4" (tokens mais escuros, Special Gothic / Source Code Pro locais, motivos de escada e grade, movimento escalonado).
+- LLM only through the Grove gateway (`grove_client` from `pov-shared`): retry, circuit breaker and model fallback on by default; default model `claude-sonnet-5-5`; no fallback to a personal key.
+- MongoDB: readable "Atlas unreachable" errors, one retry for transient and autoEmbed/Voyage throttling errors, faster degraded `/stats`.
+- Agent: PII masked before the model, checkpoint and trace; injection heuristic; ReAct step limit; dedicated checkpoint collections with a 30-day TTL; trace and token metrics scoped to the current turn.
+- Review RAG: reviews that look like prompt injection stay out of the prompt and are flagged in the UI.
+- Optional Langfuse tracing (v2, fail-open, after PII masking).
+- API hardening: normalized and bounded inputs, `NaN`/`Infinity` refused (used to cause a 500), 64 KB body limit, 422 without payload echo, sanitized `X-Request-Id`, single-flight analytics.
+- `scripts/reset_demo.py`: one guarded, idempotent reset (agent memory, catalog, synonyms, search indexes, READY wait, smoke). Seeders refuse non-`_test` databases without `ALLOW_DEMO_DB_WRITE=1`.
+- `scripts/bench_thesis.py`: measured freshness (one insert to `$search`/`$vectorSearch`) and native vs. application hybrid latency.
+- Adversarial unit suite and Playwright end-to-end walkthrough; axios 1.20 (npm audit 0).
 
 ## 1.0.0 (2026-09-30)
 

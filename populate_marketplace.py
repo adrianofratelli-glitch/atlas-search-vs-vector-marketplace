@@ -20,14 +20,18 @@ Collections created:
   • produtos_vector   → semantic subset — Vector Search autoEmbed
   • avaliacoes        → product reviews — enriches the agent
 
-Usage:
-  python populate_marketplace.py
-  TOTAL_DOCS=2000000 DB_NAME=client_poc python populate_marketplace.py
+Usage (prefer scripts/reset_demo.py, which also builds the search indexes):
+  DB_NAME=marketplace_test TOTAL_DOCS=20000 VECTOR_SAMPLE=3000 TOTAL_AVAL=20000 python populate_marketplace.py
+  ALLOW_DEMO_DB_WRITE=1 DB_NAME=POC python populate_marketplace.py   # demo database
+
+Safety: DROP_FIRST=true (default) drops the three collections. Any database
+whose name does not end in `_test` is refused unless ALLOW_DEMO_DB_WRITE=1.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
 import os
 import random
+import sys
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -47,6 +51,24 @@ TOTAL_DOCS_AVALIACOES = int(os.getenv("TOTAL_AVAL",     5_000_000))
 
 BATCH_SIZE            = int(os.getenv("BATCH_SIZE", 10_000))
 DROP_BEFORE_POPULATE  = os.getenv("DROP_FIRST", "true").lower() == "true"
+
+def assert_writable_db(db_name: str) -> None:
+    """Refuse to write into anything but a `*_test` database without explicit
+    consent: the demo database (and databases shared with other PoVs) must
+    never be dropped by accident."""
+    name = (db_name or "").strip()
+    if not name:
+        sys.exit("❌ DB_NAME vazio — informe o banco de destino.")
+    if name.endswith("_test_test"):
+        sys.exit(f"❌ '{name}' tem sufixo _test duplicado — confira DB_NAME.")
+    if name.endswith("_test"):
+        return
+    if os.getenv("ALLOW_DEMO_DB_WRITE") == "1":
+        print(f"  ⚠  ALLOW_DEMO_DB_WRITE=1 — escrevendo no banco '{name}'.")
+        return
+    sys.exit(f"❌ Recusado: '{name}' não termina em _test. Para o banco da demo, "
+             f"rode de novo com ALLOW_DEMO_DB_WRITE=1 (e nunca durante uma demo ao vivo).")
+
 
 COL_PRODUTOS        = "produtos"
 COL_PRODUTOS_VECTOR = "produtos_vector"
@@ -622,15 +644,16 @@ def populate_vector_sample(db):
     print(f"\n  ▶ {COL_PRODUTOS_VECTOR} via $sample — {n:,} docs\n")
     start_ts = time.time()
 
-    pipeline = [{"$sample": {"size": n}}, {"$project": {"_id": 0}}]
-    docs = list(col_src.aggregate(pipeline, allowDiskUse=True))
-
-    for i in range(0, len(docs), BATCH_SIZE):
-        insert_bulk(col_dst, docs[i:i + BATCH_SIZE])
-        progress_bar(min(i + BATCH_SIZE, len(docs)), len(docs), start_ts, label=COL_PRODUTOS_VECTOR)
+    # Server-side copy ($sample → $merge): the subset never travels to the
+    # client (500K docs × ~2 KB used to be loaded into Python memory).
+    pipeline = [{"$sample": {"size": n}}, {"$project": {"_id": 0}},
+                {"$merge": {"into": COL_PRODUTOS_VECTOR, "whenMatched": "keepExisting",
+                            "whenNotMatched": "insert"}}]
+    list(col_src.aggregate(pipeline, allowDiskUse=True))
+    total = col_dst.count_documents({})
 
     elapsed = time.time() - start_ts
-    print(f"\n  ✅ {COL_PRODUTOS_VECTOR} — {len(docs):,} em {elapsed:.1f}s\n")
+    print(f"\n  ✅ {COL_PRODUTOS_VECTOR} — {total:,} em {elapsed:.1f}s\n")
 
 def populate_avaliacoes(db, produto_ids: list):
     col      = db[COL_AVALIACOES]
@@ -876,7 +899,6 @@ if __name__ == "__main__":
     print("=" * 72)
     print("  MongoDB Atlas POC — Marketplace Seeder")
     print("=" * 72)
-    print(f"\n  URI       : {MONGODB_URI[:45]}...")
     print(f"  Database  : {DB_NAME}")
     print(f"  produtos  : {TOTAL_DOCS_PRODUTOS:>14,} docs")
     print(f"  vector    : {VECTOR_SAMPLE_SIZE:>14,} docs")
@@ -884,7 +906,8 @@ if __name__ == "__main__":
     print(f"  batch     : {BATCH_SIZE:>14,}")
     print(f"  drop_first: {DROP_BEFORE_POPULATE}")
 
-    client = MongoClient(MONGODB_URI)
+    assert_writable_db(DB_NAME)
+    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
     db     = client[DB_NAME]
 
     if DROP_BEFORE_POPULATE:

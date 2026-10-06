@@ -19,4 +19,25 @@ export const reviewsRag   = (query) => api.post("/reviews-rag", { query }).then(
 export const hybridNative = (query) => api.post("/hybrid-native", { query }).then((r) => r.data);
 export const hybridScoreFusion = (query) => api.post("/hybrid-score-fusion", { query }).then((r) => r.data);
 
+/**
+ * Human-readable error: what happened and how to fix it (never a bare
+ * "Request failed with status code 422").
+ */
+export function describeError(e) {
+  const status = e?.response?.status;
+  const detail = e?.response?.data?.detail;
+  if (!e?.response) {
+    if (e?.code === "ECONNABORTED") return "o backend demorou mais de 60 s para responder; tente de novo em instantes.";
+    return "backend indisponível (porta 8200). Suba com `bash start.sh` e confira /health.";
+  }
+  if (status === 422) {
+    const msg = Array.isArray(detail) ? detail.map((d) => d.msg).filter(Boolean).join("; ") : detail;
+    return `consulta inválida${msg ? `: ${msg}` : ""}. Ajuste o texto ou os filtros.`;
+  }
+  if (status === 413) return "consulta grande demais; encurte o texto.";
+  if (status === 429) return "limite de chamadas de IA simultâneas atingido; aguarde alguns segundos e tente de novo.";
+  if (status === 503) return "Atlas indisponível no momento; confira /health e a access list do cluster.";
+  return `erro ${status} no backend. Consulte o X-Request-Id ${e.response.headers?.["x-request-id"] || ""} no log.`;
+}
+
 export default api;

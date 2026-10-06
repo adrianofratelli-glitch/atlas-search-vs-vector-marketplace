@@ -12,11 +12,14 @@ setup_search_indexes.py — applies the search-index changes the demo expects.
      hybrid search runs both engines over the same corpus and native $rankFusion
      (8.1+) works. Skipped if a lexical index already exists on the collection.
 
-Idempotent — safe to run multiple times.
+Idempotent — safe to run multiple times. Applying changes is a write: it
+refuses any database that does not end in `_test` unless ALLOW_DEMO_DB_WRITE=1
+(`--status` is read-only). `scripts/reset_demo.py` calls the same functions.
 
 Usage:
-    python3 setup_search_indexes.py            # apply + poll status for 3 min
     python3 setup_search_indexes.py --status   # just show current index status
+    DB_NAME=marketplace_test python3 setup_search_indexes.py
+    ALLOW_DEMO_DB_WRITE=1 python3 setup_search_indexes.py   # demo database
 """
 
 import os
@@ -30,12 +33,6 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=False)
 
 MONGODB_URI = os.getenv("MONGODB_URI")
 DB_NAME     = os.getenv("DB_NAME", "POC")
-
-if not MONGODB_URI:
-    sys.exit("❌ MONGODB_URI não definido — crie o .env na raiz (veja .env.example).")
-
-client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
-db = client[DB_NAME]
 
 VECTOR_SEARCH_INDEX_NAME = "produtos_vector_search"
 
@@ -106,7 +103,7 @@ PRODUTOS_SEARCH_FULL_DEF = {
 }
 
 
-def list_indexes(coll):
+def list_indexes(db, coll):
     try:
         return list(db[coll].aggregate([{"$listSearchIndexes": {}}]))
     except Exception as e:
@@ -114,10 +111,10 @@ def list_indexes(coll):
         return []
 
 
-def show_status():
+def show_status(db):
     for coll in ["produtos", "produtos_vector"]:
         print(f"\n  {coll}:")
-        idx = list_indexes(coll)
+        idx = list_indexes(db, coll)
         if not idx:
             print("    (nenhum índice de busca)")
         for ix in idx:
@@ -129,8 +126,8 @@ def _as_list(spec):
     return spec if isinstance(spec, list) else [spec]
 
 
-def patch_produtos_search():
-    live = next((ix for ix in list_indexes("produtos") if ix.get("name") == "produtos_search"), None)
+def patch_produtos_search(db):
+    live = next((ix for ix in list_indexes(db, "produtos") if ix.get("name") == "produtos_search"), None)
     if live is None:
         db["produtos"].create_search_index(
             SearchIndexModel(definition=PRODUTOS_SEARCH_FULL_DEF,
@@ -162,10 +159,10 @@ def patch_produtos_search():
     return True
 
 
-def create_vector_index():
+def create_vector_index(db):
     """Vector Search index with autoEmbed (voyage-4). Building it re-embeds the
     whole collection — ~30-50 min for 200-500K docs."""
-    existing = [ix for ix in list_indexes("produtos_vector") if ix.get("type") == "vectorSearch"]
+    existing = [ix for ix in list_indexes(db, "produtos_vector") if ix.get("type") == "vectorSearch"]
     if existing:
         names = ", ".join(ix.get("name") for ix in existing)
         print(f"  ✅ produtos_vector já tem índice vetorial ({names}) — nada a fazer.")
@@ -179,8 +176,8 @@ def create_vector_index():
     return True
 
 
-def create_vector_search_index():
-    existing = list_indexes("produtos_vector")
+def create_vector_search_index(db):
+    existing = list_indexes(db, "produtos_vector")
     lexical = [ix for ix in existing if ix.get("type") != "vectorSearch"]
     if lexical:
         names = ", ".join(ix.get("name") for ix in lexical)
@@ -195,10 +192,10 @@ def create_vector_search_index():
     return True
 
 
-def poll(minutes=3):
+def poll(db, minutes=3):
     deadline = time.time() + minutes * 60
     while time.time() < deadline:
-        idx = list_indexes("produtos") + list_indexes("produtos_vector")
+        idx = list_indexes(db, "produtos") + list_indexes(db, "produtos_vector")
         pending = [ix for ix in idx if ix.get("status") not in ("READY",)]
         if not pending:
             print("\n  ✅ Todos os índices READY.")
@@ -212,28 +209,40 @@ def poll(minutes=3):
           f"     python3 setup_search_indexes.py --status")
 
 
-if __name__ == "__main__":
-    print(f"  Cluster: {MONGODB_URI[:42]}…  db: {DB_NAME}")
-    if "--status" in sys.argv:
-        show_status()
-        sys.exit(0)
+def ensure_btree_indexes(db):
+    for coll in ("produtos", "produtos_vector", "avaliacoes"):
+        db[coll].create_index("produto_id")
+        print(f"  ✓ {coll}.produto_id")
 
+
+def apply_all(db, poll_minutes=3):
+    """Every index the demo expects, idempotent. Returns True if anything changed."""
     print("\n0️⃣  índices B-tree produto_id (lookups exatos e join de avaliações)")
-    for _coll in ("produtos", "produtos_vector", "avaliacoes"):
-        db[_coll].create_index("produto_id")
-        print(f"  ✓ {_coll}.produto_id")
-
+    ensure_btree_indexes(db)
     print("\n1️⃣  produtos_search (filtros dentro do $search)")
-    changed_1 = patch_produtos_search()
-
+    changed_1 = patch_produtos_search(db)
     print("\n2️⃣  produtos_vector (Vector Search · autoEmbed voyage-4)")
-    changed_2 = create_vector_index()
-
+    changed_2 = create_vector_index(db)
     print("\n3️⃣  produtos_vector_search (hybrid no mesmo corpus + $rankFusion nativo)")
-    changed_3 = create_vector_search_index()
-
-    if changed_1 or changed_2 or changed_3:
+    changed_3 = create_vector_search_index(db)
+    changed = changed_1 or changed_2 or changed_3
+    if changed and poll_minutes:
         print()
-        poll(minutes=3)
-    else:
-        show_status()
+        poll(db, minutes=poll_minutes)
+    elif not changed:
+        show_status(db)
+    return changed
+
+
+if __name__ == "__main__":
+    if not MONGODB_URI:
+        sys.exit("❌ MONGODB_URI não definido — crie o .env na raiz (veja .env.example).")
+    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
+    db = client[DB_NAME]
+    print(f"  db: {DB_NAME}")
+    if "--status" in sys.argv:
+        show_status(db)
+        sys.exit(0)
+    from populate_marketplace import assert_writable_db
+    assert_writable_db(DB_NAME)
+    apply_all(db)

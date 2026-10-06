@@ -4,7 +4,7 @@ import Button from "@leafygreen-ui/button";
 import Badge from "@leafygreen-ui/badge";
 import Banner from "@leafygreen-ui/banner";
 import { H3, Body, Subtitle } from "@leafygreen-ui/typography";
-import { compare } from "../api";
+import { compare, describeError } from "../api";
 import { T } from "../theme";
 import ProductTable, { priceCol } from "../components/ProductTable";
 
@@ -23,7 +23,7 @@ export default function SearchVsVector() {
     setQ(text);
     setLoading(true);
     try { setData(await compare(text, useMode)); }
-    catch (e) { setData({ error: `Falha na comparação: ${e.message}` }); }
+    catch (e) { setData({ error: `Falha na comparação: ${describeError(e)}` }); }
     finally { setLoading(false); }
   };
 

@@ -17,7 +17,9 @@ def assert_shell(page, width: int) -> None:
     page.wait_for_load_state("networkidle", timeout=120_000)
 
     assert page.get_by_role("heading", name="Search × Vector").is_visible()
-    assert page.locator(".search-tabs button").count() == 7
+    # two-level nav: 4 capability groups + 4 search scenarios (7 destinations)
+    assert page.locator("nav[aria-label='Capacidades'] button").count() == 4
+    assert page.locator("nav[aria-label='Cenários de busca'] button").count() == 4
     assert page.get_by_role("button", name="Full-text", exact=True).get_attribute("aria-current") == "page"
 
     overflow = page.evaluate(
@@ -25,7 +27,7 @@ def assert_shell(page, width: int) -> None:
     )
     assert overflow <= 1, f"body overflowed horizontally by {overflow}px at {width}px"
 
-    nav_background = page.locator(".search-tabs").evaluate(
+    nav_background = page.locator(".search-tabs").first.evaluate(
         "element => getComputedStyle(element).backgroundColor"
     )
     assert nav_background != "rgba(0, 0, 0, 0)", "navigation surface CSS was not applied"
@@ -48,6 +50,7 @@ def assert_keyboard_and_live_search(page) -> None:
         "Analytics",
         "Reviews RAG",
         "Agente",
+        "Busca",  # group button: the scenario sub-nav only exists inside "Busca"
         "Full-text",
     ):
         page.get_by_role("button", name=label, exact=True).click()

@@ -5,7 +5,7 @@ import Badge from "@leafygreen-ui/badge";
 import Banner from "@leafygreen-ui/banner";
 import Toggle from "@leafygreen-ui/toggle";
 import { H3, Body, Subtitle } from "@leafygreen-ui/typography";
-import { findSimilar } from "../api";
+import { findSimilar, describeError } from "../api";
 import { T, fmtBRL } from "../theme";
 import { MqlBlock } from "../components/ProductTable";
 
@@ -19,7 +19,7 @@ export default function Similares() {
     if (loading || !nome.trim()) return;
     setLoading(true);
     try { setData(await findSimilar({ nome, same_category: filtered })); }
-    catch (e) { setData({ error: `Falha na busca: ${e.message}` }); }
+    catch (e) { setData({ error: `Falha na busca: ${describeError(e)}` }); }
     finally { setLoading(false); }
   };
 
