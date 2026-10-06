@@ -224,7 +224,7 @@ class GroveAdapter(unittest.TestCase):
         import grove_client
 
         calls = {"n": 0}
-        req = httpx.Request("POST", "https://gateway.example.mongodb.com/anthropic/v1/messages")
+        req = httpx.Request("POST", "https://gateway.example.invalid/anthropic/v1/messages")
 
         class FakeMessages:
             def create(self, **kw):
