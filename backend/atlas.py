@@ -9,7 +9,10 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError, ExecutionTimeout
+from pymongo.errors import (
+    AutoReconnect, ConnectionFailure, ExecutionTimeout, NetworkTimeout, PyMongoError,
+    ServerSelectionTimeoutError, WaitQueueTimeoutError,
+)
 from dotenv import load_dotenv
 
 # Load the .env at the project root (self-contained — does not depend on main.py)
@@ -21,13 +24,27 @@ MONGODB_URI = os.getenv("MONGODB_URI")
 DB_NAME     = os.getenv("DB_NAME", "POC")
 QUERY_TIMEOUT_MS = 10_000
 
+# Explicit timeouts (never the driver's 30 s defaults): a dead cluster turns
+# into a readable error in ~5 s instead of a hung request.
 _client = MongoClient(
     MONGODB_URI,
-    serverSelectionTimeoutMS=5000,
+    appname="search-e-vector-marketplace",
+    serverSelectionTimeoutMS=int(os.getenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "5000")),
     connectTimeoutMS=5000,
     socketTimeoutMS=15000,
+    waitQueueTimeoutMS=5000,
+    retryReads=True,
     maxPoolSize=max(1, int(os.getenv("MONGODB_MAX_POOL_SIZE", "50"))),
 )
+
+ATLAS_UNREACHABLE = ("Atlas inacessível no momento (rede, IP fora da access list ou cluster pausado). "
+                     "Verifique /health e tente novamente em instantes.")
+# One extra attempt for transient failures (connection reset, primary
+# election, autoEmbed/Voyage throttling). Set MONGODB_APP_RETRIES=0 to disable.
+APP_RETRIES = max(0, int(os.getenv("MONGODB_APP_RETRIES", "1")))
+_TRANSIENT = (AutoReconnect, NetworkTimeout)
+_PROVIDER_TRANSIENT_HINTS = ("429", "rate limit", "too many requests", "503", "502",
+                             "service unavailable", "temporarily unavailable")
 db = _client[DB_NAME]  # lazy connection — only connects on the first query
 
 
@@ -44,27 +61,50 @@ def safe_aggregate(collection: str, pipeline: list):
     debugs a timeout spike later — check Atlas metrics for autoEmbed latency
     before assuming a cluster-side regression.
     """
-    try:
-        return list(db[collection].aggregate(pipeline, maxTimeMS=QUERY_TIMEOUT_MS)), None
-    except ExecutionTimeout:
-        return None, "Operação cancelada — tempo limite de 10s atingido."
-    except PyMongoError as e:
-        msg = str(e)
-        if "index not found" in msg.lower() or "no such index" in msg.lower():
-            # The lexical/vector index on this collection may be mid-rebuild or
-            # dropped — the 60s TTL cache in get_search_indexes() could still be
-            # holding a stale "index exists" view. Force the next read to hit
-            # $listSearchIndexes for real, so "same corpus" badges and native
-            # $rankFusion eligibility reflect the current state, not a cached one.
-            invalidate_index_cache(collection)
-            return None, "Índice não encontrado. Verifique se o Search/Vector index está READY no Atlas."
-        if "synonym" in msg.lower():
-            return None, "synonym-analyzer"  # flag for graceful fallback
-        logger.warning("aggregate rejected collection=%s", collection, exc_info=True)
-        return None, "Consulta MongoDB rejeitada. Consulte o request-id nos logs do backend."
-    except Exception:
-        logger.exception("aggregate failed collection=%s", collection)
-        return None, "Falha interna ao executar a consulta MongoDB."
+    for attempt in range(APP_RETRIES + 1):
+        try:
+            return list(db[collection].aggregate(pipeline, maxTimeMS=QUERY_TIMEOUT_MS)), None
+        except ExecutionTimeout:
+            return None, "Operação cancelada — tempo limite de 10s atingido."
+        except (ServerSelectionTimeoutError, WaitQueueTimeoutError):
+            logger.warning("atlas unreachable collection=%s", collection)
+            return None, ATLAS_UNREACHABLE
+        except _TRANSIENT:
+            if attempt < APP_RETRIES:
+                time.sleep(0.2 * (attempt + 1))
+                continue
+            logger.warning("atlas transient failure persisted collection=%s", collection, exc_info=True)
+            return None, ATLAS_UNREACHABLE
+        except ConnectionFailure:
+            logger.warning("atlas connection failure collection=%s", collection, exc_info=True)
+            return None, ATLAS_UNREACHABLE
+        except PyMongoError as e:
+            msg = str(e)
+            low = msg.lower()
+            if "index not found" in low or "no such index" in low:
+                # The lexical/vector index on this collection may be mid-rebuild or
+                # dropped — the 60s TTL cache in get_search_indexes() could still be
+                # holding a stale "index exists" view. Force the next read to hit
+                # $listSearchIndexes for real, so "same corpus" badges and native
+                # $rankFusion eligibility reflect the current state, not a cached one.
+                invalidate_index_cache(collection)
+                return None, "Índice não encontrado. Verifique se o Search/Vector index está READY no Atlas."
+            if "synonym" in low:
+                return None, "synonym-analyzer"  # flag for graceful fallback
+            if ("embed" in low or "voyage" in low) and any(h in low for h in _PROVIDER_TRANSIENT_HINTS):
+                # autoEmbed calls Voyage server-side; its throttling surfaces here.
+                if attempt < APP_RETRIES:
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                logger.warning("autoEmbed provider throttled collection=%s", collection)
+                return None, ("Provedor de embeddings (Voyage via autoEmbed) indisponível ou limitado. "
+                              "A busca textual segue funcionando; tente a vetorial em instantes.")
+            logger.warning("aggregate rejected collection=%s", collection, exc_info=True)
+            return None, "Consulta MongoDB rejeitada. Consulte o request-id nos logs do backend."
+        except Exception:
+            logger.exception("aggregate failed collection=%s", collection)
+            return None, "Falha interna ao executar a consulta MongoDB."
+    return None, "Falha interna ao executar a consulta MongoDB."
 
 
 # ── Collection stats ─────────────────────────────────────────────────────────
@@ -72,14 +112,16 @@ def get_stats() -> tuple[dict, bool]:
     """Returns (counts, degraded). degraded=True means the cluster itself was
     unreachable (not just an empty collection) — the caller uses this instead
     of relying on an HTTP failure, since this endpoint always returns 200."""
-    out, degraded = {}, False
-    for c in ["produtos", "produtos_vector", "avaliacoes"]:
+    names = ["produtos", "produtos_vector", "avaliacoes"]
+    out, degraded = dict.fromkeys(names, 0), False
+    for c in names:
         try:
             out[c] = db[c].estimated_document_count()
         except Exception:
-            logger.exception("estimated_document_count failed collection=%s", c)
+            logger.warning("estimated_document_count failed collection=%s", c, exc_info=True)
             out[c] = 0
             degraded = True
+            break  # cluster unreachable: don't wait the selection timeout 3x
     return out, degraded
 
 
@@ -344,15 +386,19 @@ def _get_reviewed():
         return _reviewed_cache["by_id"]
     try:
         # distinct uses the produto_id index (~0.2s) instead of a $group scan
-        id_list = db["avaliacoes"].distinct("produto_id")
+        id_list = db["avaliacoes"].distinct("produto_id", maxTimeMS=QUERY_TIMEOUT_MS)
     except Exception:
+        # Do NOT cache a failure as "no reviewed products": the caller must be
+        # able to tell an unreachable cluster from an empty collection.
         logger.exception("distinct produto_id failed")
-        id_list = []
-    prods, _ = safe_aggregate("produtos", [
+        return None
+    prods, perr = safe_aggregate("produtos", [
         {"$match": {"produto_id": {"$in": id_list}}},
         {"$project": {"_id": 0, "produto_id": 1, "nome": 1, "marca": 1,
                       "categoria": 1, "preco": 1, "avaliacao_media": 1, "total_avaliacoes": 1}},
     ])
+    if perr:
+        return None
     _reviewed_cache["by_id"] = {p["produto_id"]: p for p in (prods or [])}
     _reviewed_cache["ts"] = now
     return _reviewed_cache["by_id"]
@@ -374,8 +420,11 @@ def get_product_and_reviews(query: str, n_reviews: int = 8) -> dict:
     Falls back to an in-memory match over the reviewed catalog only if the
     search index is unavailable."""
     by_id = _get_reviewed()
+    if by_id is None:
+        return {"error": ATLAS_UNREACHABLE, "produto": None, "reviews": []}
     if not by_id:
-        return {"error": "Nenhum produto com avaliações", "produto": None, "reviews": []}
+        return {"error": "Nenhum produto com avaliações. Rode scripts/reset_demo.py para recriar o catálogo.",
+                "produto": None, "reviews": []}
 
     search_pipeline = [
         {"$search": {"index": "produtos_search", "compound": {"should": [

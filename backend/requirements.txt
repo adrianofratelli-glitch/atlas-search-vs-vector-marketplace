@@ -6,3 +6,7 @@ langchain>=1.0,<2
 langchain-anthropic>=1.0,<2
 langgraph>=1.0,<2
 langgraph-checkpoint-mongodb>=0.4,<0.5
+anthropic>=0.116,<1  # langchain-anthropic 1.4.x requires <1.0; calls go through grove_client
+langfuse>=2,<3  # v3+/v4 SDK changes the API and fails silently; tracing is fail-open
+# LLM transport (private, workspace package): uv pip install -e "../_shared[llm]"
+# Without it the AI routes answer "unavailable"; search/vector/hybrid keep working.
