@@ -7,7 +7,10 @@ Run:  uvicorn main:app --reload --port 8200
 
 import logging
 import os
+import re
+import threading
 import time
+import unicodedata
 import uuid
 import warnings
 from threading import BoundedSemaphore
@@ -16,18 +19,22 @@ from uuid import uuid4
 from dotenv import load_dotenv
 
 # Load the .env at the project root (one level above backend/)
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"), override=True)
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"), override=False)
 warnings.filterwarnings("ignore")
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field, model_validator
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 import observability
 import atlas
 from agent import run_agent
 from reviews import summarize_reviews
+from llm_gateway import gateway_status
 
 observability.setup_logging()
 logger = logging.getLogger("searchxvector")
@@ -44,10 +51,20 @@ app.add_middleware(
 )
 
 
+MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", str(64 * 1024)))
+_REQUEST_ID_RX = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
 @app.middleware("http")
 async def _request_observability(request: Request, call_next):
     """request_id on every response + per-route latency/error counters at /api/metrics."""
-    request_id = request.headers.get("x-request-id") or uuid4().hex[:16]
+    incoming = request.headers.get("x-request-id") or ""
+    # Never echo an arbitrary client header back (log/header injection).
+    request_id = incoming if _REQUEST_ID_RX.match(incoming) else uuid4().hex[:16]
+    length = request.headers.get("content-length")
+    if length and (not length.isdigit() or int(length) > MAX_BODY_BYTES):
+        return JSONResponse({"detail": f"Corpo da requisição acima de {MAX_BODY_BYTES} bytes."},
+                            status_code=413, headers={"X-Request-Id": request_id})
     start = time.perf_counter()
     try:
         response = await call_next(request)
@@ -59,6 +76,16 @@ async def _request_observability(request: Request, call_next):
     observability.metrics.observe(request.url.path, response.status_code, elapsed_ms)
     response.headers["X-Request-Id"] = request_id
     return response
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError):
+    """422 without echoing the offending input back: FastAPI's default handler
+    serializes `input`, which turns `Infinity`/`NaN` into a 500 and reflects
+    hostile payloads to the caller."""
+    errors = [{"loc": [str(p) for p in e.get("loc", ())][:6], "msg": str(e.get("msg", ""))[:200],
+               "type": e.get("type")} for e in exc.errors()[:10]]
+    return JSONResponse({"detail": errors}, status_code=422)
 
 
 @app.get("/api/metrics")
@@ -73,20 +100,51 @@ def prometheus_metrics():
 
 
 # ── Request models ───────────────────────────────────────────────────────────
+_INVISIBLE = {"Cf", "Cc", "Cs", "Co", "Cn"}
+
+
+def clean_query(value: str) -> str:
+    """Normalize free text before it reaches $search / $vectorSearch.
+
+    NFC, drop zero-width/bidi/control characters (they make a query look
+    non-empty while matching nothing and can smuggle invisible text into the
+    agent), collapse whitespace. Empty after cleaning -> 422.
+    """
+    text = unicodedata.normalize("NFC", value)
+    text = "".join(" " if ch in "\t\r\n" else ch for ch in text
+                   if ch in "\t\r\n" or unicodedata.category(ch) not in _INVISIBLE)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        raise ValueError("query vazia depois de remover espaços e caracteres invisíveis")
+    return text
+
+
+Query = Annotated[str, Field(min_length=1, max_length=500), AfterValidator(clean_query)]
+Categoria = Annotated[str, Field(min_length=1, max_length=100)]
+
+
 class SearchReq(BaseModel):
-    query: str = Field(..., min_length=1, max_length=500)
-    categorias: list[str] | None = None
-    preco_min: float = Field(0, ge=0)
-    preco_max: float = Field(15000, ge=0)
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    query: Query
+    categorias: list[Categoria] | None = Field(default=None, max_length=20)
+    preco_min: float = Field(0, ge=0, le=10_000_000)
+    preco_max: float = Field(15000, ge=0, le=10_000_000)
     only_stock: bool = True
     synonyms: bool = False
 
+    @model_validator(mode="after")
+    def price_range(self):
+        if self.preco_min > self.preco_max:
+            raise ValueError("preco_min não pode ser maior que preco_max")
+        return self
+
 class CompareReq(BaseModel):
-    query: str = Field(..., min_length=1, max_length=500)
+    query: Query
     mode: str = Field("phrase", pattern="^(phrase|compound)$")
 
 class HybridReq(BaseModel):
-    query: str = Field(..., min_length=1, max_length=500)
+    query: Query
     # Bounded to a practically meaningful RRF range: k<10 is dominated almost
     # entirely by the top-1 rank of each pipeline, k>200 flattens rank
     # differences to the point the fusion stops discriminating between results.
@@ -95,12 +153,12 @@ class HybridReq(BaseModel):
     n_vector: int = Field(20, ge=1, le=100)
 
 class AgentReq(BaseModel):
-    message: str = Field(..., min_length=1, max_length=4000)
+    message: Annotated[str, Field(min_length=1, max_length=4000), AfterValidator(clean_query)]
     thread_id: UUID | None = None
 
 class SimilarReq(BaseModel):
-    produto_id: str | None = Field(default=None, min_length=1, max_length=120)
-    nome: str | None = Field(default=None, min_length=1, max_length=300)
+    produto_id: str | None = Field(default=None, min_length=1, max_length=120, pattern=r"^[A-Za-z0-9-]+$")
+    nome: Annotated[str, Field(min_length=1, max_length=300), AfterValidator(clean_query)] | None = None
     same_category: bool = True
 
     @model_validator(mode="after")
@@ -110,7 +168,7 @@ class SimilarReq(BaseModel):
         return self
 
 class ReviewsReq(BaseModel):
-    query: str = Field(..., min_length=1, max_length=500)
+    query: Query
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -122,6 +180,13 @@ def health():
     except Exception:
         logger.exception("Atlas ping failed")
         return JSONResponse({"status": "degraded", "db": atlas.DB_NAME}, status_code=503)
+
+
+@app.get("/health/llm")
+def health_llm():
+    """Is the Grove gateway configured? (no host/key in the answer)."""
+    status = gateway_status()
+    return JSONResponse(status, status_code=200 if status["ok"] else 503)
 
 
 @app.get("/health/live")
@@ -189,18 +254,25 @@ def agent_route(req: AgentReq):
 
 # The analytics $facet is costly to repeat on every refresh; cache 5 min per mode
 _analytics_cache = {}  # "sample"/"full" -> {"data": dict, "ts": float}
+# Single-flight per mode: N parallel refreshes of an expired cache must not
+# launch N full-collection $facet scans (60 s each) against the cluster.
+_analytics_locks = {"sample": threading.Lock(), "full": threading.Lock()}
 
 @app.get("/analytics")
 def analytics(full: bool = False):
     key = "full" if full else "sample"
     hit = _analytics_cache.get(key)
-    if hit is None or time.time() - hit["ts"] > 300:
+    if hit is not None and time.time() - hit["ts"] <= 300:
+        return hit["data"]
+    with _analytics_locks[key]:
+        hit = _analytics_cache.get(key)
+        if hit is not None and time.time() - hit["ts"] <= 300:
+            return hit["data"]  # another request refreshed it while we waited
         data = atlas.get_analytics(full=full)
         if isinstance(data, dict) and data.get("error"):
             return data  # do not cache errors
         _analytics_cache[key] = {"data": data, "ts": time.time()}
         return data
-    return hit["data"]
 
 @app.post("/similar")
 def similar(req: SimilarReq):
