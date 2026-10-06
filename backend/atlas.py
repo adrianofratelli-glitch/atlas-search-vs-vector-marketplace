@@ -701,7 +701,10 @@ def compare_search_vector(query: str, mode: str = "phrase") -> dict:
     text_res, err_s = safe_aggregate(search_coll, search_pipeline)
     t_search = (time.time() - t0) * 1000
     t0 = time.time()
-    vec_res, err_v = safe_aggregate("produtos_vector", vector_pipeline)
+    if err_s == ATLAS_UNREACHABLE:  # same cluster: the vector leg would wait the timeout again
+        vec_res, err_v = None, ATLAS_UNREACHABLE
+    else:
+        vec_res, err_v = safe_aggregate("produtos_vector", vector_pipeline)
     t_vector = (time.time() - t0) * 1000
 
     fused = _rrf_fuse(text_res, vec_res, k=60, limit=10)

@@ -140,13 +140,25 @@ def mask_pii(text: str) -> str:
         return "<texto omitido>"
 
 
+# Minimal local fallback (used only when pov-shared is not installed, e.g. a
+# public clone): the classic override / exfiltration phrasings in PT/EN/ES.
+_FALLBACK_INJECTION = [
+    r"\b(ignore|disregard|forget)\b.{0,40}\b(previous|prior|above|all)\b.{0,20}\b(instructions?|rules|prompt)",
+    r"\b(ignore|ignora|esque[cç]a|desconsidere)\w*\b.{0,40}\b(instru[cç][oõ]es|regras|prompt)",
+    r"\b(reveal|show|print|mostre|revele|exiba|muestra)\b.{0,40}\b(system prompt|prompt do sistema|instru[cç][oõ]es internas)",
+    r"\b(you are now|agora voc[eê] [eé]|a partir de agora voc[eê])\b",
+]
+
+
 def check_injection(text: str) -> tuple[bool, str | None]:
     """Offline heuristic from pov-shared (PT/EN/ES). (flagged, reason)."""
     _import_grove()
     try:
         from guardrails import check_injection as _check
     except Exception:  # noqa: BLE001
-        return False, None
+        import re
+        hit = any(re.search(p, text or "", re.I | re.S) for p in _FALLBACK_INJECTION)
+        return hit, ("injection:fallback" if hit else None)
     try:
         res = _check(text or "")
     except Exception:  # noqa: BLE001

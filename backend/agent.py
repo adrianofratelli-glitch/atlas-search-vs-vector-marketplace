@@ -18,7 +18,8 @@ from langgraph.checkpoint.mongodb import MongoDBSaver
 
 import observability
 import langfuse_tracing as lf
-from atlas import db, safe_aggregate, _client, DB_NAME, get_search_indexes
+from pymongo.errors import ConnectionFailure
+from atlas import ATLAS_UNREACHABLE, db, safe_aggregate, _client, DB_NAME, get_search_indexes
 from llm_gateway import build_chat_model, check_injection, mask_pii
 
 logger = logging.getLogger("searchxvector.agent")
@@ -331,6 +332,11 @@ def run_agent(message: str, thread_id: str) -> dict:
         logger.warning("agent hit recursion_limit=%s thread_id=%s", AGENT_RECURSION_LIMIT, thread_id)
         lf.finish_trace(trace, masked_output=STEP_LIMIT_ANSWER, metadata={"mode": "step_limit"})
         return {"answer": STEP_LIMIT_ANSWER, "trace": [], "mode": "step_limit"}
+    except ConnectionFailure:
+        # MongoDBSaver (agent memory) lives in Atlas: say so instead of blaming the LLM.
+        logger.warning("agent memory unreachable thread_id=%s", thread_id)
+        lf.finish_trace(trace, masked_output=None, metadata={"mode": "atlas_unavailable"})
+        return {"answer": ATLAS_UNREACHABLE, "trace": [], "mode": "atlas_unavailable"}
     except Exception:
         logger.exception("agent invocation failed thread_id=%s", thread_id)
         lf.finish_trace(trace, masked_output=None, metadata={"mode": "provider_unavailable"})

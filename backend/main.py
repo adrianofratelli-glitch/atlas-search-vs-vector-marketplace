@@ -196,8 +196,9 @@ def liveness():
 @app.get("/stats")
 def stats():
     counts, degraded = atlas.get_stats()
-    # Real status via $listSearchIndexes — a building/failed index shows as such
-    indices = atlas.get_index_status()
+    # Real status via $listSearchIndexes — a building/failed index shows as such.
+    # Cluster already known to be unreachable: don't wait another selection timeout.
+    indices = [] if degraded else atlas.get_index_status()
     if not indices:  # cluster without $listSearchIndexes support / no indexes yet
         indices = [
             {"name": "produtos_search", "type": "Atlas Search", "status": "UNKNOWN"},
