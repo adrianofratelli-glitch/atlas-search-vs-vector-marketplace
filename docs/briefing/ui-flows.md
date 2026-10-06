@@ -4,7 +4,7 @@
 
 ## Stack de frontend
 
-React 18 + Vite + LeafyGreen (design system MongoDB, dark mode). Sem router — `App.jsx` guarda um índice de aba (`useState`) e um array `TABS` decide qual componente renderiza (`frontend/src/App.jsx:15`). `axios` como cliente HTTP compartilhado (`frontend/src/api.js`), `react-markdown` pra renderizar a resposta do agente.
+React 18 + Vite + LeafyGreen (design system MongoDB, dark mode). Sem router — `App.jsx` guarda um índice de aba (`useState`) e um array `TABS` decide qual componente renderiza (`frontend/src/App.jsx`). `axios` como cliente HTTP compartilhado (`frontend/src/api.js`), `react-markdown` pra renderizar a resposta do agente.
 
 Duas restrições técnicas que não são preferência de estilo:
 - **React 18 fixo** — LeafyGreen não suporta React 19; subir a versão quebra o build.
@@ -22,11 +22,11 @@ Estado `offline` é tratado explicitamente: se `GET /stats` falhar ou vier com `
 
 | # | Aba | Componente | Endpoint(s) | O que precisa aparecer na tela |
 |---|---|---|---|---|
-| 1 | Full-text | `frontend/src/tabs/AtlasSearch.jsx` | `POST /search`, `POST /search/facets` | relevância lexical sobre 20M docs, filtro dentro do `$search` vs. `$match` posterior, facetas, `scoreDetails`, highlight, toggle do sinal de negócio (`boost_business`) |
+| 1 | Full-text | `frontend/src/tabs/AtlasSearch.jsx` | `POST /search`, `POST /search/facets` | relevância lexical sobre o catálogo inteiro (500K na demo), filtro dentro do `$search` vs. `$match` posterior, facetas, `scoreDetails`, highlight, toggle do sinal de negócio (`boost_business`) |
 | 2 | Search × Vector | `frontend/src/tabs/SearchVsVector.jsx` | `POST /compare` | mesma intenção escrita de dois jeitos — lexical erra (às vezes zero resultado), vetorial acerta; coluna de fusão RRF |
 | 3 | Híbrida | `frontend/src/tabs/HybridRRF.jsx` | `POST /hybrid`, `POST /hybrid-native`, `POST /hybrid-score-fusion` | rank de cada motor por documento, contagem "só lexical / só vetorial / nos dois", qual modo rodou (nativo ou fallback) e por quê |
 | 4 | Similares | `frontend/src/tabs/Similares.jsx` | `POST /similar` | vizinho semântico a partir de um produto (não de texto digitado), pré-filtro dentro do `$vectorSearch` |
-| 5 | Analytics | `frontend/src/tabs/Analytics.jsx` | `GET /analytics?full=` | `$facet` rodando no servidor; comparação amostra (12k, instantâneo) vs. full (20M) |
+| 5 | Analytics | `frontend/src/tabs/Analytics.jsx` | `GET /analytics?full=` | `$facet` rodando no servidor; comparação amostra (12k, instantâneo) vs. full (coleção inteira) |
 | 6 | Reviews RAG | `frontend/src/tabs/ReviewsRag.jsx` | `POST /reviews-rag` | resposta fundamentada só nas avaliações de fato recuperadas, produto + nota média |
 | 7 | Agente | `frontend/src/tabs/AiAgent.jsx` | `POST /agent` | trace fiel: pipeline exibido = pipeline executado; continuidade de conversa via `thread_id` |
 
@@ -51,9 +51,11 @@ Um badge visível custa pouco espaço de tela e compra credibilidade; esconder u
 
 ## Timeout e estados de erro
 
-O cliente axios tem 60s de timeout (`frontend/src/api.js:6`) — não é um número arbitrário: `$vectorSearch` sobre o subset com autoEmbed e a busca lexical sobre 20M documentos podem legitimamente passar de 5-10s dependendo da query, e um timeout curto cortaria consultas válidas.
+O cliente axios tem 60s de timeout (`frontend/src/api.js`) — não é um número arbitrário: `$vectorSearch` sobre o subset com autoEmbed e a busca lexical sobre milhões de documentos podem legitimamente passar de 5-10s dependendo da query, e um timeout curto cortaria consultas válidas.
 
 Quando o semáforo de concorrência de IA (`AI_MAX_CONCURRENCY`) satura, o backend responde HTTP 429 — a aba de Agente/Reviews RAG mostra "ocupado, tente de novo" em vez de ficar girando indefinidamente.
+
+Toda mensagem de erro passa por `describeError` (`frontend/src/api.js`), que diz o que houve e como resolver: backend fora ("suba com `bash start.sh`"), timeout de 60 s, 422 com o motivo da validação (ex.: query só com caracteres invisíveis), 413, 429, 503 (Atlas) e, nos demais, o `X-Request-Id` para achar no log. Na aba Reviews RAG, avaliações retidas pelo filtro de prompt injection ganham badge, e o resumo indisponível (gateway fora) vira banner com as avaliações do MongoDB ainda visíveis.
 
 ## Screenshots existentes (`docs/screenshots/`)
 
@@ -72,7 +74,7 @@ Catálogo é sintético, então nenhuma captura precisa de mascaramento. Regra d
 
 ## Roteiro de demonstração (ordem recomendada)
 
-1. **Full-text sobre 20M** — mostrar contagem de matches com filtro dentro do `$search`, `scoreDetails` explicando o ranking, pipeline ao lado.
+1. **Full-text sobre o catálogo inteiro** — mostrar contagem de matches com filtro dentro do `$search`, `scoreDetails` explicando o ranking, pipeline ao lado.
 2. **Ligar/desligar o sinal de negócio** no score e observar o ranking mudar — relevância é regra de negócio, e a regra está na query.
 3. **A mesma intenção escrita de outro jeito** — lexical erra (às vezes zero resultado), vetorial acerta, mesmo cluster.
 4. **Híbrida com `$rankFusion` nativo** — rank de cada motor por documento, quantos vieram só de um lado.

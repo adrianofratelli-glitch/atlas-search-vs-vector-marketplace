@@ -110,14 +110,14 @@ VECTOR_SEARCH_INDEX_DEF = {
 
 ## 2. Busca lexical (Atlas Search)
 
-Local: `backend/atlas.py:531` (`atlas_search`), monta o pipeline em `build_search_pipeline` (`backend/atlas.py:502`).
+Local: `backend/atlas.py` (`atlas_search`), monta o pipeline em `build_search_pipeline` (`backend/atlas.py`).
 
-**O que faz**: busca full-text sobre os 20M documentos de `produtos`, com autocomplete fuzzy em `nome`, texto fuzzy em `descricao`, filtros opcionais de categoria/preço/estoque, highlight e score explicado.
+**O que faz**: busca full-text sobre todos os documentos de `produtos` (500K na demo; o gerador vai a 20M), com autocomplete fuzzy em `nome`, texto fuzzy em `descricao`, filtros opcionais de categoria/preço/estoque, highlight e score explicado.
 
-**Por que existe**: é a aba "Busca full-text" — demonstra Atlas Search em escala (20M docs), o padrão de decidir dinamicamente se o filtro roda dentro ou fora do `$search`, e o sinal de negócio no ranking.
+**Por que existe**: é a aba "Busca full-text" — demonstra Atlas Search em escala, o padrão de decidir dinamicamente se o filtro roda dentro ou fora do `$search`, e o sinal de negócio no ranking.
 
 ```python
-# Operador de busca (backend/atlas.py:447 build_search_op)
+# Operador de busca (backend/atlas.py build_search_op)
 {
     "compound": {
         "should": [
@@ -129,7 +129,7 @@ Local: `backend/atlas.py:531` (`atlas_search`), monta o pipeline em `build_searc
     }
 }
 
-# Pipeline completo (backend/atlas.py:502 build_search_pipeline)
+# Pipeline completo (backend/atlas.py build_search_pipeline)
 [
     {"$search": {
         "index": "produtos_search",
@@ -154,7 +154,7 @@ Local: `backend/atlas.py:531` (`atlas_search`), monta o pipeline em `build_searc
 ]
 ```
 
-**Sinal de negócio no score** (`_business_score`, `backend/atlas.py:438`) — multiplica a relevância textual pela nota média do produto:
+**Sinal de negócio no score** (`_business_score`, `backend/atlas.py`) — multiplica a relevância textual pela nota média do produto:
 
 ```python
 {"function": {
@@ -165,20 +165,20 @@ Local: `backend/atlas.py:531` (`atlas_search`), monta o pipeline em `build_searc
 }}
 ```
 
-**Decisão de onde vai o filtro** (`build_filters`, `backend/atlas.py:464`): consulta `search_filter_caps()` (baseado no índice vivo lido via `$listSearchIndexes`) e decide, campo a campo:
+**Decisão de onde vai o filtro** (`build_filters`, `backend/atlas.py`): consulta `search_filter_caps()` (baseado no índice vivo lido via `$listSearchIndexes`) e decide, campo a campo:
 - `preco` → `compound.filter` com `{"range": {"path": "preco", "gte": ..., "lte": ...}}` se o índice tem tipo `number`; senão vira `$match` pós-`$search`.
 - `em_estoque` → `{"equals": {"path": "em_estoque", "value": True}}` se `boolean`; senão `$match`.
 - `categoria` → `{"in": {"path": "categoria", "value": [...]}}` se `token`; senão `$match`.
 
 Isso importa porque filtro **dentro** do `$search` mantém `$$SEARCH_META.count.total` correto (a contagem reflete o filtro); filtro **depois** do `$search` filtra resultados já ranqueados e a contagem exibida fica pré-filtro (a API sinaliza isso via `filters_in_search: bool`).
 
-**Caminho de sinônimos**: quando `with_synonyms=True`, o operador vira `{"text": {"query": query, "path": ["nome", "descricao"], "synonyms": "sinonimos_produtos"}}` — como não é `compound`, precisa ser embrulhado num `compound.must` (`_apply_search_filters`, `backend/atlas.py:490`) antes de receber `compound.filter`, porque operadores não-compound não aceitam filtro direto. Se o analisador de sinônimos não estiver pronto, a resposta sinaliza `synonyms_fallback: true` e reexecuta sem sinônimos.
+**Caminho de sinônimos**: quando `with_synonyms=True`, o operador vira `{"text": {"query": query, "path": ["nome", "descricao"], "synonyms": "sinonimos_produtos"}}` — como não é `compound`, precisa ser embrulhado num `compound.must` (`_apply_search_filters`, `backend/atlas.py`) antes de receber `compound.filter`, porque operadores não-compound não aceitam filtro direto. Se o analisador de sinônimos não estiver pronto, a resposta sinaliza `synonyms_fallback: true` e reexecuta sem sinônimos.
 
 ---
 
 ## 3. Facetas ($searchMeta)
 
-Local: `backend/atlas.py:569` (`search_facets`).
+Local: `backend/atlas.py` (`search_facets`).
 
 **O que faz**: retorna contagens por categoria e por faixa de preço direto do servidor, sem trazer os documentos.
 
@@ -214,13 +214,13 @@ Usada em várias abas — a query "crua" mais simples está em `agent.py` (ver s
 }}
 ```
 
-`_num_candidates(limit, multiplier=10)` (`backend/atlas.py:244`) centraliza o cálculo — por padrão o pool de candidatos é 10x o `limit` (guidance do MongoDB para o ANN/HNSW: candidatos demais custa latência, de menos custa recall). Multiplicadores maiores (15x, 22x) são usados quando há pré-filtro pesado ou a comparação precisa de mais recall, e cada call site documenta por quê.
+`_num_candidates(limit, multiplier=10)` (`backend/atlas.py`) centraliza o cálculo — por padrão o pool de candidatos é 10x o `limit` (guidance do MongoDB para o ANN/HNSW: candidatos demais custa latência, de menos custa recall). Multiplicadores maiores (15x, 22x) são usados quando há pré-filtro pesado ou a comparação precisa de mais recall, e cada call site documenta por quê.
 
 ---
 
 ## 5. Produtos similares — pré-filtro vetorial
 
-Local: `backend/atlas.py:259` (`find_similar`).
+Local: `backend/atlas.py` (`find_similar`).
 
 **O que faz**: acha o produto base (por id ou por nome, via Atlas Search) e busca vizinhos semânticos, com filtro de categoria/estoque aplicado **dentro** do `$vectorSearch`.
 
@@ -237,13 +237,13 @@ Local: `backend/atlas.py:259` (`find_similar`).
 
 **Por que existe**: é a aba "Similares" — demonstra que filtro estruturado (categoria, estoque) e busca semântica podem rodar no **mesmo** estágio, sem pós-filtro na aplicação, sem degradar a qualidade do ranking. É o argumento mais forte contra "vector DB separado do banco + filtro na aplicação depois".
 
-Detalhe de implementação relevante: quando `produtos_vector` tem índice lexical (`produtos_vector_search`), o produto base é buscado **na própria** `produtos_vector` (mesma distribuição textual do corpus vetorizado); sem esse índice, cai numa heurística cross-collection (base vem de `produtos`, vetor roda em `produtos_vector`) — logada como aviso porque a relevância pode degradar silenciosamente (distribuições textuais diferentes entre 20M e 500K).
+Detalhe de implementação relevante: quando `produtos_vector` tem índice lexical (`produtos_vector_search`), o produto base é buscado **na própria** `produtos_vector` (mesma distribuição textual do corpus vetorizado); sem esse índice, cai numa heurística cross-collection (base vem de `produtos`, vetor roda em `produtos_vector`) — logada como aviso porque a relevância pode degradar silenciosamente (distribuições textuais diferentes entre o catálogo e o subset).
 
 ---
 
 ## 6. Comparação lexical vs. vetorial + RRF
 
-Local: `backend/atlas.py:620` (`compare_search_vector`).
+Local: `backend/atlas.py` (`compare_search_vector`).
 
 **O que faz**: roda a mesma consulta nos dois motores lado a lado (frase exata em `nome` ou o operador compound completo) e funde por RRF pra mostrar onde cada um achou e onde nenhum achou.
 
@@ -262,7 +262,7 @@ Local: `backend/atlas.py:620` (`compare_search_vector`).
 
 ## 7. Híbrida tunável — RRF na aplicação
 
-Local: `backend/atlas.py:683` (`hybrid_rrf`), fusão em `_rrf_fuse` (`backend/atlas.py:594`).
+Local: `backend/atlas.py` (`hybrid_rrf`), fusão em `_rrf_fuse` (`backend/atlas.py`).
 
 **O que faz**: roda busca textual e vetorial em paralelo (`ThreadPoolExecutor`, 2 workers) e funde por Reciprocal Rank Fusion: `score = Σ 1/(k + rank)`, com `k` ajustável pela UI (10 a 200).
 
@@ -285,13 +285,13 @@ v_pipe = [
 ]
 ```
 
-**Por que existe**: é o modo híbrido que **sempre funciona** — não depende de versão do Atlas nem de layout de índice específico — e por isso é o fallback de `hybrid_native`/`hybrid_score_fusion`. `k` foi limitado ao intervalo [10, 200] (`HybridReq.k` em `backend/main.py:93`) porque fora dessa faixa o RRF deixa de discriminar resultados de forma útil (k baixo: domina o rank 1; k alto: achata as diferenças).
+**Por que existe**: é o modo híbrido que **sempre funciona** — não depende de versão do Atlas nem de layout de índice específico — e por isso é o fallback de `hybrid_native`/`hybrid_score_fusion`. `k` foi limitado ao intervalo [10, 200] (`HybridReq.k` em `backend/main.py`) porque fora dessa faixa o RRF deixa de discriminar resultados de forma útil (k baixo: domina o rank 1; k alto: achata as diferenças).
 
 ---
 
 ## 8. Híbrida nativa — $rankFusion
 
-Local: `backend/atlas.py:777` (`hybrid_native`), parsing do detalhe em `_parse_rank_fusion_details` (`backend/atlas.py:748`).
+Local: `backend/atlas.py` (`hybrid_native`), parsing do detalhe em `_parse_rank_fusion_details` (`backend/atlas.py`).
 
 ```python
 [
@@ -324,7 +324,7 @@ Local: `backend/atlas.py:777` (`hybrid_native`), parsing do detalhe em `_parse_r
 
 ## 9. Híbrida nativa — $scoreFusion
 
-Local: `backend/atlas.py:888` (`hybrid_score_fusion`), parsing em `_parse_score_fusion_details` (`backend/atlas.py:858`).
+Local: `backend/atlas.py` (`hybrid_score_fusion`), parsing em `_parse_score_fusion_details` (`backend/atlas.py`).
 
 ```python
 [
@@ -356,13 +356,13 @@ Local: `backend/atlas.py:888` (`hybrid_score_fusion`), parsing em `_parse_score_
 
 **Por que existe**: modo didático de Relative Score Fusion — em vez de fundir por rank (como `$rankFusion`), normaliza os scores brutos de cada sub-pipeline (0-1, `minMaxScaler`) e faz média ponderada. Fica exposto como terceiro modo na aba híbrida.
 
-**Limitação observada e documentada** (código, `backend/atlas.py:960`, e ADR `docs/adr/0001-rankfusion-vs-scorefusion.md`): a normalização `minMaxScaler` pode colapsar o score combinado de **todos** os resultados para `0`, mesmo com `inputPipelineRawScore > 0` em algum sub-pipeline (confirmado inspecionando `scoreDetails` diretamente). O código detecta esse sintoma (`all(x["score"] == 0 for x in fused)`) e retorna `degraded_reason` explicando — a UI mostra um banner em vez de esconder o problema. Causa raiz **não era bug de servidor**: era `populate_marketplace.py` gerando descrições quase idênticas dentro da mesma subcategoria, empatando o score lexical em massa — corrigido adicionando `DESC_DIFERENCIAIS` como segundo eixo de variação textual.
+**Limitação observada e documentada** (código, `backend/atlas.py`, e ADR `docs/adr/0001-rankfusion-vs-scorefusion.md`): a normalização `minMaxScaler` pode colapsar o score combinado de **todos** os resultados para `0`, mesmo com `inputPipelineRawScore > 0` em algum sub-pipeline (confirmado inspecionando `scoreDetails` diretamente). O código detecta esse sintoma (`all(x["score"] == 0 for x in fused)`) e retorna `degraded_reason` explicando — a UI mostra um banner em vez de esconder o problema. Causa raiz **não era bug de servidor**: era `populate_marketplace.py` gerando descrições quase idênticas dentro da mesma subcategoria, empatando o score lexical em massa — corrigido adicionando `DESC_DIFERENCIAIS` como segundo eixo de variação textual.
 
 ---
 
 ## 10. Analytics — $facet
 
-Local: `backend/atlas.py:167` (`get_analytics`).
+Local: `backend/atlas.py` (`get_analytics`).
 
 ```python
 [
@@ -396,10 +396,10 @@ Local: `backend/atlas.py:167` (`get_analytics`).
     }},
 ]
 # full=False (padrão) prefixa com {"$sample": {"size": 12000}} pra responder instantâneo
-# full=True roda o MESMO pipeline sobre os 20M — é essa comparação que é a demonstração
+# full=True roda o MESMO pipeline sobre a coleção inteira — é essa comparação que é a demonstração
 ```
 
-**Por que existe**: mostra cinco agregações rodando em paralelo, numa única passada no servidor (`$facet`), sem trazer dado bruto pra aplicação. `full=True` versus `full=False` é o argumento de escala: mesmo pipeline, 12 mil docs (instantâneo) vs. 20 milhões.
+**Por que existe**: mostra cinco agregações rodando em paralelo, numa única passada no servidor (`$facet`), sem trazer dado bruto pra aplicação. `full=True` versus `full=False` é o argumento de escala: mesmo pipeline, 12 mil docs (instantâneo) vs. a coleção inteira (500K na demo, até 20M no gerador).
 
 Nota de implementação: `$bucket` omite buckets vazios, então os rótulos de faixa de preço são mapeados pelo `_id` (limite inferior do bucket), não pela posição no array — um gap deslocaria os rótulos se fosse por posição.
 
@@ -407,7 +407,7 @@ Nota de implementação: `$bucket` omite buckets vazios, então os rótulos de f
 
 ## 11. RAG de avaliações
 
-Local: `backend/atlas.py:369` (`get_product_and_reviews`), sumarização em `backend/reviews.py:43` (`summarize_reviews`).
+Local: `backend/atlas.py` (`get_product_and_reviews`), sumarização em `backend/reviews.py` (`summarize_reviews`).
 
 **Passo 1 — achar o produto relevante que TEM avaliação**:
 
@@ -435,7 +435,7 @@ Top 300 candidatos do Atlas Search são cruzados em memória com o conjunto de p
 ]
 ```
 
-**Por que existe**: RAG real sobre dado real — as avaliações vêm de `avaliacoes` de verdade, não sintetizadas na hora, e o LLM (Claude Haiku, `backend/reviews.py:18`) só sumariza o que foi de fato recuperado. `_get_reviewed()` (`backend/atlas.py:340`, cache TTL 600s) garante que a demo nunca cai num estado de "0 avaliações" — resolve a busca dentro do subconjunto avaliado desde o início, o que é honesto porque é exatamente o caso de uso real (recomendar baseado em quem já tem opinião formada).
+**Por que existe**: RAG real sobre dado real — as avaliações vêm de `avaliacoes` de verdade, não sintetizadas na hora, e o LLM (`claude-sonnet-5-5` via gateway Grove, `backend/reviews.py`) só sumariza o que foi de fato recuperado. Avaliações que casam a heurística de prompt injection (`guardrails.check_injection`) ficam fora do prompt e aparecem marcadas na UI (`suspeita_injection`, `injection_dropped`); o resto vai mascarado (PII) e cercado por `<avaliacoes>` como dado. `_get_reviewed()` (`backend/atlas.py`, cache TTL 600s) garante que a demo nunca cai num estado de "0 avaliações" — resolve a busca dentro do subconjunto avaliado desde o início, o que é honesto porque é exatamente o caso de uso real (recomendar baseado em quem já tem opinião formada).
 
 Fallback: se o índice lexical estiver indisponível, cai num scan em memória sobre o catálogo avaliado (cacheado por 30s por query, pra não repetir o scan em rajadas concorrentes durante uma indisponibilidade).
 
@@ -443,7 +443,7 @@ Fallback: se o índice lexical estiver indisponível, cai num scan em memória s
 
 ## 12. Pipelines do agente de IA
 
-Local: `backend/agent.py:40-77` — funções `_pipe_*`, únicas construtoras usadas tanto pelas tools quanto pela exibição do trace (`build_tool_pipeline`, `backend/agent.py:168`).
+Local: `backend/agent.py` — funções `_pipe_*`, únicas construtoras usadas tanto pelas tools quanto pela exibição do trace (`build_tool_pipeline`, `backend/agent.py`).
 
 | Ferramenta | Coleção | Pipeline |
 |---|---|---|
@@ -452,9 +452,9 @@ Local: `backend/agent.py:40-77` — funções `_pipe_*`, únicas construtoras us
 | `comparar_categoria` | `produtos` | ```[{"$match": {"categoria": categoria, "em_estoque": True}}, {"$sort": {"avaliacao_media": -1, "total_avaliacoes": -1}}, {"$limit": limite}, {"$project": {...}}]``` |
 | `produtos_por_faixa_preco` | `produtos` | ```[{"$match": {"categoria": categoria, "em_estoque": True, "preco": {"$gte": preco_min, "$lte": preco_max}}}, {"$sort": {"avaliacao_media": -1}}, {"$limit": 10}, {"$project": {...}}]``` |
 
-**Por que existe assim**: `build_tool_pipeline()` lê do mesmo dicionário (`PIPELINE_BUILDERS`, `backend/agent.py:94`) que as tools chamam de verdade — o trace mostrado na UI (aba "Agente") é byte a byte o que rodou, sem reconstrução aproximada.
+**Por que existe assim**: `build_tool_pipeline()` lê do mesmo dicionário (`PIPELINE_BUILDERS`, `backend/agent.py`) que as tools chamam de verdade — o trace mostrado na UI (aba "Agente") é byte a byte o que rodou, sem reconstrução aproximada.
 
-Antes de rodar, cada tool checa se o índice necessário está `READY` (`_index_ready`, `backend/agent.py:79`) — mesma lógica de degradação graciosa das abas manuais, aplicada às tools do LLM, pra não deixar um erro cru do PyMongo entrar no contexto do modelo.
+Antes de rodar, cada tool checa se o índice necessário está `READY` (`_index_ready`, `backend/agent.py`) — mesma lógica de degradação graciosa das abas manuais, aplicada às tools do LLM, pra não deixar um erro cru do PyMongo entrar no contexto do modelo.
 
 ---
 
@@ -473,18 +473,18 @@ for _coll in ("produtos", "produtos_vector", "avaliacoes"):
 
 ## 14. Introspecção de índices ($listSearchIndexes)
 
-Local: `backend/atlas.py:93` (`get_search_indexes`) e funções derivadas.
+Local: `backend/atlas.py` (`get_search_indexes`) e funções derivadas.
 
 ```python
 [{"$listSearchIndexes": {}}]
 ```
 
-Cache com TTL de 60s por coleção (`_index_cache`, `backend/atlas.py:91`), invalidado imediatamente quando uma query falha com erro "index not found" (`invalidate_index_cache`, `backend/atlas.py:107`) — evita que o badge de "mesmo corpus"/elegibilidade de `$rankFusion` fique preso a uma leitura obsoleta durante rebuild ou drop de índice.
+Cache com TTL de 60s por coleção (`_index_cache`, `backend/atlas.py`), invalidado imediatamente quando uma query falha com erro "index not found" (`invalidate_index_cache`, `backend/atlas.py`) — evita que o badge de "mesmo corpus"/elegibilidade de `$rankFusion` fique preso a uma leitura obsoleta durante rebuild ou drop de índice.
 
 Funções construídas em cima dela:
-- `get_index_status()` (`backend/atlas.py:119`) — status real (`READY`/`BUILDING`/...) de cada índice, usado no `GET /stats`.
-- `_field_types(index_doc, path)` (`backend/atlas.py:134`) — quais tipos um campo tem na definição viva do índice.
-- `search_filter_caps()` (`backend/atlas.py:144`) — que filtros podem rodar dentro do `$search` (usado na seção 2).
-- `vector_collection_search_index()` (`backend/atlas.py:156`) — nome do índice lexical **queryable** em `produtos_vector`, ou `None` — é o gatilho que decide se `$rankFusion`/`$scoreFusion` nativos são possíveis.
+- `get_index_status()` (`backend/atlas.py`) — status real (`READY`/`BUILDING`/...) de cada índice, usado no `GET /stats`.
+- `_field_types(index_doc, path)` (`backend/atlas.py`) — quais tipos um campo tem na definição viva do índice.
+- `search_filter_caps()` (`backend/atlas.py`) — que filtros podem rodar dentro do `$search` (usado na seção 2).
+- `vector_collection_search_index()` (`backend/atlas.py`) — nome do índice lexical **queryable** em `produtos_vector`, ou `None` — é o gatilho que decide se `$rankFusion`/`$scoreFusion` nativos são possíveis.
 
 **Por que existe**: é a base técnica de todo o padrão de "degradação graciosa" do projeto — o backend nunca assume estado de índice, sempre lê o estado real antes de decidir o caminho de execução.
