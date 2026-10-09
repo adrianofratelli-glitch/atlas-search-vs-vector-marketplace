@@ -48,6 +48,7 @@ cd backend && ../.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8200   # lê
 | `MONGODB_APP_RETRIES` | Retentativa para falha transitória/throttling do autoEmbed (padrão 1; 0 desliga) |
 | `MAX_BODY_BYTES`    | Limite do corpo da requisição (padrão 64 KB → 413)               |
 | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Tracing opcional, fail-open                |
+| `CATALOG_SYNC`      | `0` desliga o espelho produtos → produtos_vector (padrão: ligado) |
 | `CORS_ORIGINS`      | Origens permitidas separadas por vírgula (padrão: `localhost:5273`) |
 
 ## Módulos
@@ -56,6 +57,7 @@ cd backend && ../.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8200   # lê
 atlas.py            conexão com o MongoDB (timeouts explícitos, retry transitório) e pipelines
 agent.py            agente ReAct LangGraph: 4 ferramentas, máscara de PII, filtro de injection, trace MQL
 reviews.py          RAG de reviews: avaliações suspeitas de injection ficam fora do prompt
+catalog_sync.py     change stream que espelha produtos → produtos_vector (resume token, pausa no rebuild)
 llm_gateway.py      ChatAnthropic cujo transporte é grove_client.create_message (Grove, resiliência)
 langfuse_tracing.py tracing Langfuse v2 fail-open (trace criada depois da máscara de PII)
 main.py             rotas FastAPI, validação de entrada, limites, CORS e métricas

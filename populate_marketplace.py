@@ -646,7 +646,9 @@ def populate_vector_sample(db):
 
     # Server-side copy ($sample → $merge): the subset never travels to the
     # client (500K docs × ~2 KB used to be loaded into Python memory).
-    pipeline = [{"$sample": {"size": n}}, {"$project": {"_id": 0}},
+    # The copy keeps the source _id so the change-stream mirror
+    # (backend/catalog_sync.py) can propagate deletes by _id.
+    pipeline = [{"$sample": {"size": n}},
                 {"$merge": {"into": COL_PRODUTOS_VECTOR, "whenMatched": "keepExisting",
                             "whenNotMatched": "insert"}}]
     list(col_src.aggregate(pipeline, allowDiskUse=True))
@@ -694,7 +696,8 @@ def create_indexes(db):
     pv = db[COL_PRODUTOS_VECTOR]
     pv.create_index([("categoria", ASCENDING)])
     pv.create_index([("preco", ASCENDING)])
-    print(f"    ✅ {COL_PRODUTOS_VECTOR} — 2 indexes")
+    pv.create_index([("produto_id", ASCENDING)])  # mirror key (catalog_sync)
+    print(f"    ✅ {COL_PRODUTOS_VECTOR} — 3 indexes")
 
     av = db[COL_AVALIACOES]
     av.create_index([("produto_id", ASCENDING)])

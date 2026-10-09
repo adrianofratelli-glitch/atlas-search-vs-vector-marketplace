@@ -10,9 +10,13 @@ Two questions a skeptical architect (Elasticsearch/OpenSearch + pgvector) asks:
    Read-only: safe on the demo database.
 
 2. "How long until a new product is searchable, and who keeps the copies in
-   sync?"  Inserts ONE document and polls until it is returned by $search
-   (lexical) AND by $vectorSearch (autoEmbed generates the embedding inside
-   Atlas). No CDC, no queue, no embedding job. Writes: *_test databases only.
+   sync?"  (a) Inserts ONE document in produtos_vector and polls until it is
+   returned by $search (lexical) AND by $vectorSearch (autoEmbed generates the
+   embedding inside Atlas). (b) Inserts ONE document in `produtos` (the
+   catalog the app writes to) and measures when the change-stream mirror
+   (backend/catalog_sync.py) copies it into produtos_vector and when
+   $vectorSearch returns it; then deletes it and measures the delete reaching
+   the copy. No queue, no ETL, no embedding job. Writes: *_test databases only.
 
 Usage:
   python scripts/bench_thesis.py --db marketplace_test --runs 15 --freshness
@@ -68,7 +72,7 @@ def freshness(db, timeout_s: float) -> None:
                          "ideal para levar ao escritório, trilhas e viagens longas."),
            "categoria": "Casa & Cozinha", "preco": 129.9, "em_estoque": True, "avaliacao_media": 4.7,
            "marca": token}
-    print(f"\n2) frescor: 1 insert em produtos_vector, poll a cada 250 ms até {timeout_s:.0f}s")
+    print(f"\n2a) frescor: 1 insert em produtos_vector, poll a cada 250 ms até {timeout_s:.0f}s")
     t0 = time.perf_counter()
     db.produtos_vector.insert_one(doc)
     insert_ms = (time.perf_counter() - t0) * 1000
@@ -95,7 +99,61 @@ def freshness(db, timeout_s: float) -> None:
     print(f"   insert_one: {insert_ms:.0f} ms")
     print(f"   visível no $search (lexical):            {fmt(lex_ms)}")
     print(f"   visível no $vectorSearch (autoEmbed):     {fmt(vec_ms)}")
-    print("   pipeline de sync/embedding mantido pela aplicação: nenhum (documento removido ao final)")
+    print("   job de embedding mantido pela aplicação: nenhum (documento removido ao final)")
+
+
+def _doc(token: str) -> dict:
+    return {"produto_id": str(uuid.uuid4()), "nome": f"{token} Garrafa Térmica — Azul",
+            "descricao": (f"Garrafa térmica {token} de aço inox que mantém o café quente por 12 horas, "
+                          "ideal para levar ao escritório, trilhas e viagens longas."),
+            "categoria": "Casa & Cozinha", "preco": 129.9, "em_estoque": True, "avaliacao_media": 4.7,
+            "marca": token}
+
+
+def freshness_mirror(db, timeout_s: float, start_mirror: bool) -> None:
+    import catalog_sync  # noqa: E402
+
+    mirror = None
+    if start_mirror:  # self-contained; idempotent if the app's mirror also runs
+        import threading
+        mirror = catalog_sync.CatalogMirror(db)
+        threading.Thread(target=mirror.run_forever, daemon=True).start()
+        time.sleep(2)  # let the change stream open before the write
+    doc = _doc("Vyrkel" + uuid.uuid4().hex[:6])
+    print(f"\n2b) frescor via espelho: 1 insert em produtos → produtos_vector "
+          f"(change stream {'neste processo' if start_mirror else 'do app'}), poll 250 ms até {timeout_s:.0f}s")
+    t0 = time.perf_counter()
+    db.produtos.insert_one(doc)
+    copy_ms = vec_ms = gone_ms = None
+    try:
+        while time.perf_counter() - t0 < timeout_s and (copy_ms is None or vec_ms is None):
+            if copy_ms is None and db.produtos_vector.count_documents({"produto_id": doc["produto_id"]}):
+                copy_ms = (time.perf_counter() - t0) * 1000
+            if copy_ms is not None and vec_ms is None:
+                hit = list(db.produtos_vector.aggregate([
+                    {"$vectorSearch": {"index": "produtos_vector", "path": "descricao", "query": doc["descricao"],
+                                       "numCandidates": 100, "limit": 5}},
+                    {"$project": {"_id": 0, "produto_id": 1}}], maxTimeMS=10000))
+                if any(h["produto_id"] == doc["produto_id"] for h in hit):
+                    vec_ms = (time.perf_counter() - t0) * 1000
+            time.sleep(0.25)
+    finally:
+        db.produtos.delete_one({"produto_id": doc["produto_id"]})
+        t1 = time.perf_counter()
+        while time.perf_counter() - t1 < 30:
+            if not db.produtos_vector.count_documents({"produto_id": doc["produto_id"]}):
+                gone_ms = (time.perf_counter() - t1) * 1000
+                break
+            time.sleep(0.1)
+        if gone_ms is None:  # never leave the probe behind
+            db.produtos_vector.delete_many({"produto_id": doc["produto_id"]})
+        if mirror:
+            mirror.stop()
+    fmt = lambda v: f"{v / 1000:.1f} s" if v is not None else f"> {timeout_s:.0f} s (não encontrado)"  # noqa: E731
+    print(f"   cópia em produtos_vector (espelho):       {fmt(copy_ms)}")
+    print(f"   visível no $vectorSearch (autoEmbed):     {fmt(vec_ms)}")
+    print(f"   delete propagado para a cópia:            {fmt(gone_ms) if gone_ms is not None else '> 30 s (removido à mão)'}")
+    print("   código de sync mantido pela aplicação: backend/catalog_sync.py (um change stream, sem fila/ETL)")
 
 
 def main() -> int:
@@ -104,6 +162,8 @@ def main() -> int:
     ap.add_argument("--runs", type=int, default=15)
     ap.add_argument("--freshness", action="store_true")
     ap.add_argument("--timeout", type=float, default=180)
+    ap.add_argument("--app-mirror", action="store_true",
+                    help="2b usa o espelho do app já rodando (padrão: abre um neste processo)")
     args = ap.parse_args()
     os.environ["DB_NAME"] = args.db
     import atlas  # noqa: E402 — reads DB_NAME at import
@@ -116,6 +176,7 @@ def main() -> int:
         if not args.db.endswith("_test"):
             sys.exit("❌ --freshness escreve: só em bancos *_test.")
         freshness(atlas.db, args.timeout)
+        freshness_mirror(atlas.db, args.timeout, start_mirror=not args.app_mirror)
     return 0
 
 
