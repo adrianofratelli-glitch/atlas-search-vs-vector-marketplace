@@ -32,6 +32,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validat
 
 import observability
 import atlas
+import catalog_sync
 from agent import run_agent
 from reviews import summarize_reviews
 from llm_gateway import gateway_status
@@ -171,12 +172,25 @@ class ReviewsReq(BaseModel):
     query: Query
 
 
+# ── Catalog mirror (produtos -> produtos_vector) ─────────────────────────────
+@app.on_event("startup")
+def _start_catalog_sync():
+    """Change stream that mirrors every write on produtos into produtos_vector.
+    Runs in a daemon thread; Atlas being down only delays it (backoff)."""
+    catalog_sync.start(atlas.db)
+
+
+@app.on_event("shutdown")
+def _stop_catalog_sync():
+    catalog_sync.stop()
+
+
 # ── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     try:
         atlas.db.command("ping")
-        return {"status": "ok", "db": atlas.DB_NAME}
+        return {"status": "ok", "db": atlas.DB_NAME, "catalog_sync": catalog_sync.status()}
     except Exception:
         logger.exception("Atlas ping failed")
         return JSONResponse({"status": "degraded", "db": atlas.DB_NAME}, status_code=503)

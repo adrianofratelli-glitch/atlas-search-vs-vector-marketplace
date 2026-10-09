@@ -15,8 +15,12 @@ What it does, in order:
   5. Waits until every search index is READY and queryable, then runs one
      $search and one $vectorSearch as a smoke check.
 
-The app never writes to the catalog, so a normal reset (no flag) only clears
-agent memory and verifies indexes: seconds. --rebuild-catalog on the demo
+The app itself never writes to the catalog; its change-stream mirror
+(backend/catalog_sync.py) only copies writes made on `produtos` into
+`produtos_vector`. A rebuild pauses that mirror and records a cluster time so
+the seed is never copied (the seed decides the vector sample). A normal reset
+(no flag) only clears agent memory, prepares the mirror (pre-images on
+produtos, produto_id index on produtos_vector) and verifies indexes: seconds. --rebuild-catalog on the demo
 sizes (500K products, a vector index re-embedding 500K descriptions) takes
 tens of minutes and consumes Voyage credits through autoEmbed.
 
@@ -40,6 +44,7 @@ import time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from dotenv import load_dotenv  # noqa: E402
 
@@ -49,6 +54,7 @@ from pymongo import MongoClient  # noqa: E402
 
 import populate_marketplace as pop  # noqa: E402
 import setup_search_indexes as ssi  # noqa: E402
+import catalog_sync  # noqa: E402
 
 CHECKPOINT_COLLECTIONS = (
     os.getenv("AGENT_CHECKPOINT_COLLECTION", "marketplace_checkpoints"),
@@ -172,7 +178,15 @@ def main(argv=None) -> int:
     done(t0)
 
     if args.rebuild_catalog or db.produtos.estimated_document_count() == 0:
-        rebuild_catalog(db, args.products, args.vector, args.reviews)
+        catalog_sync.pause(db)  # a running app must not mirror the seed
+        try:
+            rebuild_catalog(db, args.products, args.vector, args.reviews)
+        finally:
+            catalog_sync.resume_from_now(db)
+
+    t0 = step("espelho produtos → produtos_vector (pré-imagens + índice produto_id)")
+    catalog_sync.CatalogMirror(db).prepare()
+    done(t0)
 
     t0 = step("sinônimos (coleção sinonimos)")
     db.sinonimos.delete_many({})
