@@ -20,6 +20,21 @@
 
 ---
 
+## 0. Espelho produtos → produtos_vector (change stream)
+
+`backend/catalog_sync.py`, iniciado no startup da API:
+
+```python
+db.produtos.watch([{"$match": {"operationType": {"$in": ["insert", "replace", "update", "delete"]}}}],
+                  full_document="updateLookup", full_document_before_change="whenAvailable",
+                  resume_after=<token salvo em catalog_sync_state>)
+# insert/replace/update: produtos_vector.replace_one({"produto_id": doc["produto_id"]}, doc_sem_id)
+#                        ou, se não existe, replace_one({"_id": doc["_id"]}, doc, upsert=True)
+# delete:                produtos_vector.delete_many({"$or": [{"_id": key}, {"produto_id": pre_imagem.produto_id}]})
+```
+
+**Por que existe**: o catálogo fica em duas coleções (o índice lexical extra e o vetorial precisam estar juntos em `produtos_vector` para `$rankFusion`/`$scoreFusion`), e um produto novo em `produtos` precisa aparecer também na busca vetorial. Índice B-tree `produto_id` em `produtos_vector` sustenta o `replace_one`; pré-imagens em `produtos` (`collMod changeStreamPreAndPostImages`) permitem remover cópias antigas do seed, que têm `_id` diferente.
+
 ## 1. Índices Atlas Search e Vector Search
 
 Definidos em `setup_search_indexes.py`, aplicados de forma **idempotente** (roda quantas vezes quiser; mescla no que já existe em vez de sobrescrever).

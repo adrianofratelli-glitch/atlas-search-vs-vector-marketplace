@@ -6,7 +6,7 @@
 
 PoC de MongoDB Atlas Search & Vector Search sobre um catálogo sintético de marketplace (estilo Mercado Livre/Shopee). Cobre busca full-text, busca semântica, ranqueamento híbrido (`$rankFusion`/`$scoreFusion` nativos + RRF calculado na aplicação), analytics agregado, RAG sobre avaliações reais e um agente ReAct (LangGraph) com quatro ferramentas MongoDB.
 
-Tese central: um cluster Atlas único cobre busca lexical, busca vetorial e busca híbrida — sem motor de busca externo nem vector DB separado.
+Tese central: um cluster Atlas único cobre busca lexical, busca vetorial e busca híbrida — sem motor de busca externo nem vector DB separado. O catálogo fica em duas coleções do mesmo banco (`produtos` e `produtos_vector`), mantidas em sincronia por um change stream no próprio backend; não há fila, ETL nem job de embedding.
 
 ## Stack
 
@@ -24,6 +24,7 @@ frontend/src/tabs/*.jsx ──axios (src/api.js)──► backend/main.py (rotas
                                                    ├── atlas.py          TODOS os pipelines MongoDB (camada de acesso a dados)
                                                    ├── agent.py          agente ReAct LangGraph + 4 tools
                                                    ├── reviews.py        RAG de sumarização de avaliações
+                                                   ├── catalog_sync.py   change stream produtos → produtos_vector
                                                    └── observability.py  logging estruturado + /api/metrics
 ```
 
@@ -47,11 +48,21 @@ Onde encontrar cada coisa rapidamente:
 | `produtos_vector` | 500 mil (subset via `$sample`) | Vector Search (autoEmbed voyage-4) **+** índice lexical auxiliar |
 | `avaliacoes` | 100 mil no banco da demo | reviews usadas no RAG e pelo agente |
 | `sinonimos` | 7 | fonte do mapeamento `sinonimos_produtos` |
+| `catalog_sync_state` | 1 | resume token e pausa do espelho `produtos → produtos_vector` |
 | `marketplace_checkpoints` / `marketplace_checkpoint_writes` | — | memória do LangGraph (`MongoDBSaver`), chaveada por `thread_id`, TTL 30 dias |
 
 ### Por que duas coleções de produto
 
 `produtos_vector` existe porque vetorizar o catálogo inteiro não agrega ao PoC quando ele está em escala de milhões e custa caro (embedding é cobrado). Na escala do gerador (20M), a busca lexical roda contra o catálogo inteiro e a vetorial/híbrida contra o subset de 500K; no banco atual da demo as duas coleções têm 500K. O banco `POC` é compartilhado com outras PoVs: este app só lê/escreve as coleções listadas acima.
+
+### Como as duas coleções ficam em sincronia
+
+O seed copia uma amostra (`$sample`, mantendo o `_id` de origem). Depois disso, `backend/catalog_sync.py` roda dentro do processo da API (thread daemon iniciada no startup do FastAPI) e assiste `produtos` com um change stream (`fullDocument: updateLookup`, pré-imagens habilitadas por `collMod`):
+
+- insert / replace / update → `replace_one` em `produtos_vector` por `produto_id` (ou insert com o `_id` de origem); o autoEmbed gera o embedding da nova `descricao` dentro do Atlas;
+- delete → remove a cópia por `_id` ou, via pré-imagem, por `produto_id`.
+
+O resume token vai para `catalog_sync_state` (no máximo a cada 1 s), então um restart continua de onde parou dentro da janela do oplog; reaplicar é idempotente. `scripts/reset_demo.py --rebuild-catalog` pausa o espelho e grava um `skip_before` (cluster time) ao terminar, para o seed não ser copiado. `GET /health` mostra o estado (`catalog_sync`); `CATALOG_SYNC=0` só existe para desligar. Medido em 2026-10-09 (banco de teste, `scripts/bench_thesis.py --freshness --app-mirror`): cópia em 0,9 s, `$vectorSearch` encontra em 18,2 s, delete propagado em 0,5 s. Limite: o espelho só roda com a API no ar; escrita feita com a API parada é aplicada no próximo start se ainda estiver no oplog.
 
 `produtos_vector` também carrega um **índice lexical próprio** (`produtos_vector_search`), além do vetorial. Motivo: `$rankFusion` e `$scoreFusion` nativos do MongoDB exigem que os dois sub-pipelines (textual e semântico) rodem na **mesma coleção**. Sem esse índice lexical extra, o híbrido nativo não é possível — só sobra o RRF calculado na aplicação.
 

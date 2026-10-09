@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 (2026-10-09)
+
+- Catalog mirror: `backend/catalog_sync.py` keeps `produtos_vector` in step with `produtos` through a change stream in the API process (insert/replace/update upserted by `produto_id`, deletes propagated, resume token in `catalog_sync_state`, `CATALOG_SYNC=0` to revert). A product inserted in `produtos` now reaches `$vectorSearch`.
+- `scripts/reset_demo.py --rebuild-catalog` pauses the mirror and skips the seed's writes; every reset enables pre-images on `produtos` and the `produto_id` index on `produtos_vector`. The `$sample` copy keeps the source `_id`.
+- `scripts/bench_thesis.py --freshness` also measures the mirror path (copy, `$vectorSearch`, delete).
+- README and briefing: the two-collection catalog and its sync are described as they are; the thesis no longer says "no sync".
+- `pov-shared` 0.2.1 (editable).
+
 ## 1.1.0 (2026-10-06)
 
 - UI: layout MongoDB 2026 "Dark Stage v4" (tokens mais escuros, Special Gothic / Source Code Pro locais, motivos de escada e grade, movimento escalonado).
