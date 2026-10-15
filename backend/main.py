@@ -40,7 +40,7 @@ from llm_gateway import gateway_status
 observability.setup_logging()
 logger = logging.getLogger("searchxvector")
 
-app = FastAPI(title="Search × Vector POC API", version="1.0")
+app = FastAPI(title="Search × Vector POC API", version="1.2.0")
 
 # Allowed origins — configurable via CORS_ORIGINS (comma-separated list)
 _origins = os.getenv("CORS_ORIGINS", "http://localhost:5273,http://127.0.0.1:5273").split(",")

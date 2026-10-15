@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
+
 ## 1.2.0 (2026-10-09)
 
 - Catalog mirror: `backend/catalog_sync.py` keeps `produtos_vector` in step with `produtos` through a change stream in the API process (insert/replace/update upserted by `produto_id`, deletes propagated, resume token in `catalog_sync_state`, `CATALOG_SYNC=0` to revert). A product inserted in `produtos` now reaches `$vectorSearch`.
