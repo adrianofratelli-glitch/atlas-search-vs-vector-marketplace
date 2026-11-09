@@ -1,5 +1,7 @@
 # Search & AI agent PoV on MongoDB Atlas
 
+Mapa do código: docs/MAPA_DO_CODIGO.md
+
 Most e-commerce stacks glue together a search engine, a vector database, an analytics warehouse, and a store for agent memory. This PoV runs all four on MongoDB Atlas alone, over a synthetic marketplace catalog. The generator scales to 20 million products (`TOTAL_DOCS`); the demo database currently holds 500K products, a 500K vector collection and 100K reviews.
 
 Seven tabs, one Atlas capability in each. Every screen prints the MQL that actually ran; nothing is mocked. Point it at any dataset through `MONGODB_URI` / `DB_NAME`.
