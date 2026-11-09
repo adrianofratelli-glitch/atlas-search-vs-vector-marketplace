@@ -1,5 +1,7 @@
 # Interface, telas e fluxos
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Arquitetura em `architecture.md`, queries e índices em `queries.md`. Este arquivo é sobre a interface: o que cada tela mostra, o que ela chama no backend, e o que precisa aparecer nela pra fazer sentido em demo.
 
 ## Stack de frontend
@@ -22,9 +24,9 @@ Estado `offline` é tratado explicitamente: se `GET /stats` falhar ou vier com `
 
 | # | Aba | Componente | Endpoint(s) | O que precisa aparecer na tela |
 |---|---|---|---|---|
-| 1 | Full-text | `frontend/src/tabs/AtlasSearch.jsx` | `POST /search`, `POST /search/facets` | relevância lexical sobre o catálogo inteiro (500K na demo), filtro dentro do `$search` vs. `$match` posterior, facetas, `scoreDetails`, highlight, toggle do sinal de negócio (`boost_business`) |
+| 1 | Full-text | `frontend/src/tabs/AtlasSearch.jsx` | `POST /search`, `POST /search/facets` | relevância lexical sobre o catálogo inteiro (500K na demo), filtro dentro do `$search` vs. `$match` posterior, facetas, `scoreDetails`, highlight, toggle de sinônimos (`synonyms`; o boost de negócio é sempre aplicado no modo padrão, não há toggle `boost_business` na UI nem em `SearchReq`) |
 | 2 | Search × Vector | `frontend/src/tabs/SearchVsVector.jsx` | `POST /compare` | mesma intenção escrita de dois jeitos — lexical erra (às vezes zero resultado), vetorial acerta; coluna de fusão RRF |
-| 3 | Híbrida | `frontend/src/tabs/HybridRRF.jsx` | `POST /hybrid`, `POST /hybrid-native`, `POST /hybrid-score-fusion` | rank de cada motor por documento, contagem "só lexical / só vetorial / nos dois", qual modo rodou (nativo ou fallback) e por quê |
+| 3 | Híbrida | `frontend/src/tabs/HybridRRF.jsx` | `POST /hybrid-native` (`hybridNative`), `POST /hybrid-score-fusion` (`hybridScoreFusion`); `POST /hybrid` existe em `api.js`/backend, mas a aba não o usa | rank de cada motor por documento, contagem "só lexical / só vetorial / nos dois", qual modo rodou (nativo ou fallback) e por quê |
 | 4 | Similares | `frontend/src/tabs/Similares.jsx` | `POST /similar` | vizinho semântico a partir de um produto (não de texto digitado), pré-filtro dentro do `$vectorSearch` |
 | 5 | Analytics | `frontend/src/tabs/Analytics.jsx` | `GET /analytics?full=` | `$facet` rodando no servidor; comparação amostra (12k, instantâneo) vs. full (coleção inteira) |
 | 6 | Reviews RAG | `frontend/src/tabs/ReviewsRag.jsx` | `POST /reviews-rag` | resposta fundamentada só nas avaliações de fato recuperadas, produto + nota média |

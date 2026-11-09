@@ -1,5 +1,7 @@
 # Queries, pipelines e índices MongoDB
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Isto é o arquivo pra abrir quando o gestor perguntar "onde está a query de X". Todo pipeline aqui vem do código real de `backend/atlas.py`, `backend/agent.py`, `scripts/setup_search_indexes.py` e `scripts/populate_marketplace.py` — nada foi inventado. Localização = arquivo:linha na versão lida nesta auditoria; confira a linha exata antes de citar em reunião, código muda.
 
 Índice rápido:
