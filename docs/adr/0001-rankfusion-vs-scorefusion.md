@@ -2,7 +2,7 @@
 
 **Status:** Aceito — atualizado com causa raiz corrigida (2026-09-08)
 **Data:** 2026-09-07 (revisão 2026-09-08)
-**Contexto do cliente/conta:** POC interna — search-e-vector-marketplace
+**Contexto do cliente/conta:** POC interna — atlas-search-vs-vector-marketplace
 
 ## Contexto
 A aba Híbrida da POC precisava demonstrar as duas técnicas nativas de fusão de busca do MongoDB Atlas: `$rankFusion` (Reciprocal Rank Fusion) e `$scoreFusion` (Relative Score Fusion), já que documentação e materiais de venda do MongoDB apresentam RRF e RSF como as duas abordagens de hybrid search nativo. O cluster usado está na versão mais recente do Atlas, com suporte a ambos os stages. A aplicação já tinha `$rankFusion` implementado (`backend/atlas.py::hybrid_native`) com fallback gracioso para RRF calculado na aplicação quando o stage ou o índice necessário não estão disponíveis — esse é o padrão central do projeto (nunca presumir que um índice/stage existe; introspectar e sinalizar).

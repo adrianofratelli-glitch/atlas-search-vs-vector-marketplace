@@ -1,4 +1,4 @@
-# Arquitetura — search-e-vector-marketplace
+# Arquitetura — atlas-search-vs-vector-marketplace
 
 > Visão rápida pra responder "como isso é feito" sem precisar abrir o código. Queries e índices detalhados estão em `queries.md`. Telas e fluxos em `ui-flows.md`. Comportamento do agente de IA em `agent-behavior.md`.
 
