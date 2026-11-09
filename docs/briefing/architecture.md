@@ -29,16 +29,16 @@ frontend/src/tabs/*.jsx ──axios (src/api.js)──► backend/main.py (rotas
 ```
 
 Scripts de setup fora do backend:
-- `populate_marketplace.py` — gera o catálogo sintético e popula as três coleções.
-- `setup_search_indexes.py` — cria/corrige os índices Atlas Search e Vector Search (idempotente).
+- `scripts/populate_marketplace.py` — gera o catálogo sintético e popula as três coleções.
+- `scripts/setup_search_indexes.py` — cria/corrige os índices Atlas Search e Vector Search (idempotente).
 
 Onde encontrar cada coisa rapidamente:
 - **Toda query e pipeline MongoDB**: `backend/atlas.py` (é a regra do projeto — nada de aggregation espalhada por outros arquivos).
 - **Rotas HTTP e validação de request**: `backend/main.py`.
 - **Lógica do agente de IA e suas tools**: `backend/agent.py`.
 - **RAG de reviews**: `backend/reviews.py`.
-- **Definição de índices**: `setup_search_indexes.py`.
-- **Geração/seed de dados**: `populate_marketplace.py`.
+- **Definição de índices**: `scripts/setup_search_indexes.py`.
+- **Geração/seed de dados**: `scripts/populate_marketplace.py`.
 
 ## Modelo de dados — banco `POC` (padrão; configurável via `DB_NAME`)
 
@@ -99,7 +99,7 @@ A busca lexical não usa só o score textual do BM25/Lucene: multiplica a relev�
 
 ### 4. $rankFusion vs $scoreFusion — ver ADR
 
-`docs/adr/0001-rankfusion-vs-scorefusion.md` documenta por que `$rankFusion` (RRF nativo) é o modo padrão da aba híbrida, e `$scoreFusion` (RSF) fica exposto como modo didático com um bug observado: a normalização `minMaxScaler` pode colapsar o score combinado de todos os resultados para `0` mesmo com score bruto não-zero em algum sub-pipeline. Isso é detectado (`hybrid_score_fusion`, `backend/atlas.py`) e reportado via `degraded_reason` — a causa raiz não era o cluster, era texto quase idêntico entre produtos gerados sinteticamente (empatando o score lexical em massa); corrigido em `populate_marketplace.py` adicionando um segundo eixo de variação textual (`DESC_DIFERENCIAIS`).
+`docs/adr/0001-rankfusion-vs-scorefusion.md` documenta por que `$rankFusion` (RRF nativo) é o modo padrão da aba híbrida, e `$scoreFusion` (RSF) fica exposto como modo didático com um bug observado: a normalização `minMaxScaler` pode colapsar o score combinado de todos os resultados para `0` mesmo com score bruto não-zero em algum sub-pipeline. Isso é detectado (`hybrid_score_fusion`, `backend/atlas.py`) e reportado via `degraded_reason` — a causa raiz não era o cluster, era texto quase idêntico entre produtos gerados sinteticamente (empatando o score lexical em massa); corrigido em `scripts/populate_marketplace.py` adicionando um segundo eixo de variação textual (`DESC_DIFERENCIAIS`).
 
 ### 5. Inicialização preguiçosa do agente
 
@@ -117,14 +117,14 @@ O agente LangGraph e seu checkpointer MongoDB (`MongoDBSaver`) só são constru�
 ALLOW_DEMO_DB_WRITE=1 .venv/bin/python scripts/reset_demo.py   # demo: limpa memória do agente + confere índices
 bash start.sh                          # backend 127.0.0.1:8200 + frontend 127.0.0.1:5273
 DB_NAME=marketplace_test bash start.sh # mesmo app no banco de teste (variável de ambiente vence o .env)
-python3 setup_search_indexes.py --status   # só mostra status dos índices (leitura)
+python3 scripts/setup_search_indexes.py --status   # só mostra status dos índices (leitura)
 
 .venv/bin/python -m unittest discover -s backend/tests   # offline, inclui a suíte adversarial
 .venv/bin/python frontend/tests/e2e_demo.py              # roteiro completo no navegador
 .venv/bin/python scripts/bench_thesis.py --db marketplace_test --freshness
 ```
 
-`.env` na raiz: `MONGODB_URI`, `DB_NAME` (default `POC`), `GROVE_BASE_URL` e `GROVE_API_KEY` (só para `/agent` e `/reviews-rag`). `populate_marketplace.py`, `setup_search_indexes.py` e `reset_demo.py` recusam bancos que não terminam em `_test` sem `ALLOW_DEMO_DB_WRITE=1`.
+`.env` na raiz: `MONGODB_URI`, `DB_NAME` (default `POC`), `GROVE_BASE_URL` e `GROVE_API_KEY` (só para `/agent` e `/reviews-rag`). `scripts/populate_marketplace.py`, `scripts/setup_search_indexes.py` e `reset_demo.py` recusam bancos que não terminam em `_test` sem `ALLOW_DEMO_DB_WRITE=1`.
 
 ## Resiliência
 

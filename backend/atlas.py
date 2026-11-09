@@ -839,7 +839,7 @@ def hybrid_native(query: str, limit: int = 20) -> dict:
         return {
             "native": False,
             "reason": ("$rankFusion exige os dois índices na MESMA coleção — crie um "
-                       "índice Atlas Search em produtos_vector (veja populate_marketplace.py). "
+                       "índice Atlas Search em produtos_vector (veja scripts/populate_marketplace.py). "
                        "Exibindo RRF calculado na aplicação."),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
             "elapsed_ms": fb.get("elapsed_ms", 0), "k": 60, "pipeline": None,
@@ -949,7 +949,7 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
         return {
             "native": False,
             "reason": ("$scoreFusion exige os dois índices na MESMA coleção — crie um "
-                       "índice Atlas Search em produtos_vector (veja populate_marketplace.py). "
+                       "índice Atlas Search em produtos_vector (veja scripts/populate_marketplace.py). "
                        "Exibindo RRF calculado na aplicação."),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
             "elapsed_ms": fb.get("elapsed_ms", 0), "pipeline": None,

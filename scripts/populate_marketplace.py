@@ -21,8 +21,8 @@ Collections created:
   • avaliacoes        → product reviews — enriches the agent
 
 Usage (prefer scripts/reset_demo.py, which also builds the search indexes):
-  DB_NAME=marketplace_test TOTAL_DOCS=20000 VECTOR_SAMPLE=3000 TOTAL_AVAL=20000 python populate_marketplace.py
-  ALLOW_DEMO_DB_WRITE=1 DB_NAME=POC python populate_marketplace.py   # demo database
+  DB_NAME=marketplace_test TOTAL_DOCS=20000 VECTOR_SAMPLE=3000 TOTAL_AVAL=20000 python scripts/populate_marketplace.py
+  ALLOW_DEMO_DB_WRITE=1 DB_NAME=POC python scripts/populate_marketplace.py   # demo database
 
 Safety: DROP_FIRST=true (default) drops the three collections. Any database
 whose name does not end in `_test` is refused unless ALLOW_DEMO_DB_WRITE=1.

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reorganização: `populate_marketplace.py` e `setup_search_indexes.py` saíram da raiz para `scripts/`; imports, testes e docs ajustados.
 - Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
 
 ## 1.2.0 (2026-10-09)

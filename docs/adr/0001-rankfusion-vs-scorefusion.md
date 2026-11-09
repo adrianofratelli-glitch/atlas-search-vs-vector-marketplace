@@ -13,7 +13,7 @@ Implementar `hybrid_score_fusion()` (`backend/atlas.py:888`) espelhando o mesmo 
 ## ⚠️ Correção de causa raiz (2026-09-08)
 A versão original deste ADR (2026-09-07) atribuiu o colapso de score do `$scoreFusion` a uma **limitação do cluster/Atlas**. Investigação posterior (sessão de debug estruturado, ver `docs/screenshots/hybrid-rankfusion-residual.png` e `docs/screenshots/hybrid-scorefusion.png`) mostrou que essa conclusão estava **errada**: o colapso era causado pelo **dado sintético**, não pelo Atlas.
 
-`populate_marketplace.py::get_descricao()` gerava a `descricao` de cada produto a partir de um único template por subcategoria, só substituindo `{marca}`/`{modelo}` — todo o resto do texto (~200 palavras) era **idêntico** entre dezenas de milhares de produtos da mesma subcategoria. Isso empatava o score lexical do Atlas Search em massa (mesmo corpo de texto → mesmo BM25). Dois sintomas seguiam diretamente disso:
+`scripts/populate_marketplace.py::get_descricao()` gerava a `descricao` de cada produto a partir de um único template por subcategoria, só substituindo `{marca}`/`{modelo}` — todo o resto do texto (~200 palavras) era **idêntico** entre dezenas de milhares de produtos da mesma subcategoria. Isso empatava o score lexical do Atlas Search em massa (mesmo corpo de texto → mesmo BM25). Dois sintomas seguiam diretamente disso:
 
 1. **`$rankFusion`**: quando todos os documentos do sub-pipeline `textual` têm o mesmo score bruto, o servidor atribui `rank: 1` a todos eles simultaneamente (ranking com empate, não um bug de posição) — confirmado inspecionando `scoreDetails.details[].rank` cru direto no cluster.
 2. **`$scoreFusion` com `normalization: minMaxScaler`**: quando todos os `inputPipelineRawScore` de um sub-pipeline empatam, `min == max` no conjunto, e `(x - min) / (max - min)` é `0/0 → 0` para **todo** documento daquele grupo — propriedade matemática do algoritmo, não degeneração do servidor.
@@ -51,7 +51,7 @@ Reproduzido diretamente via agregação (fora da aplicação, consultando o clus
 ## Consequências
 - Positivas: a aba híbrida cobre as duas técnicas nativas (RRF e RSF) citadas nos materiais de venda do MongoDB, mantendo o invariante de transparência do projeto (MQL exibido, badge de fallback/limitação sempre visível). O bug real (dado sintético colapsado) está corrigido, não mascarado.
 - Negativas / trade-offs aceitos: para queries que caem no grupo residual de empate (ver limitação acima), o `$rankFusion` ainda mostra ranks empatados — é o comportamento correto do servidor sobre esse dado, exibido honestamente em vez de escondido.
-- Reversibilidade: alta. O fix em `populate_marketplace.py` é aditivo (não quebra o schema); `hybrid_score_fusion()` continua aditiva e não altera `hybrid_native()`.
+- Reversibilidade: alta. O fix em `scripts/populate_marketplace.py` é aditivo (não quebra o schema); `hybrid_score_fusion()` continua aditiva e não altera `hybrid_native()`.
 
 ## Riscos e mitigação
 - **Risco:** a heurística de detecção de degradação (`fused and all(x["score"] == 0)`) ainda existe no código para o caso legítimo de um grupo de documentos inteiramente tied — mantida por segurança, mas hoje dispara com muito menos frequência.

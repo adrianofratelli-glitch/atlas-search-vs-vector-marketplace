@@ -1,6 +1,6 @@
 # Queries, pipelines e índices MongoDB
 
-> Isto é o arquivo pra abrir quando o gestor perguntar "onde está a query de X". Todo pipeline aqui vem do código real de `backend/atlas.py`, `backend/agent.py`, `setup_search_indexes.py` e `populate_marketplace.py` — nada foi inventado. Localização = arquivo:linha na versão lida nesta auditoria; confira a linha exata antes de citar em reunião, código muda.
+> Isto é o arquivo pra abrir quando o gestor perguntar "onde está a query de X". Todo pipeline aqui vem do código real de `backend/atlas.py`, `backend/agent.py`, `scripts/setup_search_indexes.py` e `scripts/populate_marketplace.py` — nada foi inventado. Localização = arquivo:linha na versão lida nesta auditoria; confira a linha exata antes de citar em reunião, código muda.
 
 Índice rápido:
 1. [Índices Atlas Search e Vector Search](#1-índices-atlas-search-e-vector-search)
@@ -37,11 +37,11 @@ db.produtos.watch([{"$match": {"operationType": {"$in": ["insert", "replace", "u
 
 ## 1. Índices Atlas Search e Vector Search
 
-Definidos em `setup_search_indexes.py`, aplicados de forma **idempotente** (roda quantas vezes quiser; mescla no que já existe em vez de sobrescrever).
+Definidos em `scripts/setup_search_indexes.py`, aplicados de forma **idempotente** (roda quantas vezes quiser; mescla no que já existe em vez de sobrescrever).
 
 ### 1.1 `produtos_search` — índice lexical em `produtos`
 
-Local: `setup_search_indexes.py:82` (definição completa, usada só se o índice ainda não existir) e `setup_search_indexes.py:75` (patch aplicado num índice já existente).
+Local: `scripts/setup_search_indexes.py:82` (definição completa, usada só se o índice ainda não existir) e `scripts/setup_search_indexes.py:75` (patch aplicado num índice já existente).
 
 ```python
 PRODUTOS_SEARCH_FULL_DEF = {
@@ -73,11 +73,11 @@ PRODUTOS_SEARCH_FULL_DEF = {
 
 **Por que existe**: é o índice que sustenta toda a busca full-text (aba "Busca full-text" e o fallback lexical de outras abas). `nome` tem `autocomplete` (edge n-gram 2-15) para digitação incremental, `descricao` usa o analisador `lucene.portuguese` (stemming em português — "tênis" casa com "tênis", "correr" com "corrida" via raiz). `categoria` e `preco` têm **dois tipos cada** (`token`+`stringFacet`/`number`+`numberFacet`) de propósito: o segundo tipo é o que habilita filtro dentro de `compound.filter` e faceta via `$searchMeta` ao mesmo tempo.
 
-O patch (`patch_produtos_search`, `setup_search_indexes.py:132`) existe porque essa demo evoluiu em cima de um índice que já estava rodando em produção/demo anterior sem os tipos filtráveis — o script detecta o que falta e adiciona sem derrubar sinônimos/analisadores já configurados.
+O patch (`patch_produtos_search`, `scripts/setup_search_indexes.py:132`) existe porque essa demo evoluiu em cima de um índice que já estava rodando em produção/demo anterior sem os tipos filtráveis — o script detecta o que falta e adiciona sem derrubar sinônimos/analisadores já configurados.
 
 ### 1.2 `produtos_vector` — índice Vector Search (autoEmbed) em `produtos_vector`
 
-Local: `setup_search_indexes.py:45`.
+Local: `scripts/setup_search_indexes.py:45`.
 
 ```python
 VECTOR_INDEX_DEF = {
@@ -96,7 +96,7 @@ Build desse índice reprocessa a coleção inteira (~30-50 min para 200-500K doc
 
 ### 1.3 `produtos_vector_search` — índice lexical em `produtos_vector`
 
-Local: `setup_search_indexes.py:55`.
+Local: `scripts/setup_search_indexes.py:55`.
 
 ```python
 VECTOR_SEARCH_INDEX_DEF = {
@@ -371,7 +371,7 @@ Local: `backend/atlas.py` (`hybrid_score_fusion`), parsing em `_parse_score_fusi
 
 **Por que existe**: modo didático de Relative Score Fusion — em vez de fundir por rank (como `$rankFusion`), normaliza os scores brutos de cada sub-pipeline (0-1, `minMaxScaler`) e faz média ponderada. Fica exposto como terceiro modo na aba híbrida.
 
-**Limitação observada e documentada** (código, `backend/atlas.py`, e ADR `docs/adr/0001-rankfusion-vs-scorefusion.md`): a normalização `minMaxScaler` pode colapsar o score combinado de **todos** os resultados para `0`, mesmo com `inputPipelineRawScore > 0` em algum sub-pipeline (confirmado inspecionando `scoreDetails` diretamente). O código detecta esse sintoma (`all(x["score"] == 0 for x in fused)`) e retorna `degraded_reason` explicando — a UI mostra um banner em vez de esconder o problema. Causa raiz **não era bug de servidor**: era `populate_marketplace.py` gerando descrições quase idênticas dentro da mesma subcategoria, empatando o score lexical em massa — corrigido adicionando `DESC_DIFERENCIAIS` como segundo eixo de variação textual.
+**Limitação observada e documentada** (código, `backend/atlas.py`, e ADR `docs/adr/0001-rankfusion-vs-scorefusion.md`): a normalização `minMaxScaler` pode colapsar o score combinado de **todos** os resultados para `0`, mesmo com `inputPipelineRawScore > 0` em algum sub-pipeline (confirmado inspecionando `scoreDetails` diretamente). O código detecta esse sintoma (`all(x["score"] == 0 for x in fused)`) e retorna `degraded_reason` explicando — a UI mostra um banner em vez de esconder o problema. Causa raiz **não era bug de servidor**: era `scripts/populate_marketplace.py` gerando descrições quase idênticas dentro da mesma subcategoria, empatando o score lexical em massa — corrigido adicionando `DESC_DIFERENCIAIS` como segundo eixo de variação textual.
 
 ---
 
@@ -475,7 +475,7 @@ Antes de rodar, cada tool checa se o índice necessário está `READY` (`_index_
 
 ## 13. Índices B-tree simples
 
-Local: `setup_search_indexes.py:221-224`.
+Local: `scripts/setup_search_indexes.py:221-224`.
 
 ```python
 for _coll in ("produtos", "produtos_vector", "avaliacoes"):

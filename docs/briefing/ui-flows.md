@@ -85,6 +85,6 @@ Catálogo é sintético, então nenhuma captura precisa de mascaramento. Regra d
 
 ## Antes de apresentar (checklist)
 
-- `python3 setup_search_indexes.py --status` — tudo `READY` (o índice vetorial com autoEmbed demora mais que o de busca lexical).
+- `python3 scripts/setup_search_indexes.py --status` — tudo `READY` (o índice vetorial com autoEmbed demora mais que o de busca lexical).
 - `GET /stats` confirmando números reais do cluster, não zeros.
 - Uma busca de aquecimento em cada aba que usa IA, para o primeiro clique da demo não pagar cold start do LLM.

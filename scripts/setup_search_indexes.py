@@ -17,9 +17,9 @@ refuses any database that does not end in `_test` unless ALLOW_DEMO_DB_WRITE=1
 (`--status` is read-only). `scripts/reset_demo.py` calls the same functions.
 
 Usage:
-    python3 setup_search_indexes.py --status   # just show current index status
-    DB_NAME=marketplace_test python3 setup_search_indexes.py
-    ALLOW_DEMO_DB_WRITE=1 python3 setup_search_indexes.py   # demo database
+    python3 scripts/setup_search_indexes.py --status   # just show current index status
+    DB_NAME=marketplace_test python3 scripts/setup_search_indexes.py
+    ALLOW_DEMO_DB_WRITE=1 python3 scripts/setup_search_indexes.py   # demo database
 """
 
 import os
@@ -29,7 +29,7 @@ from pymongo import MongoClient
 from pymongo.operations import SearchIndexModel
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=False)
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"), override=False)
 
 MONGODB_URI = os.getenv("MONGODB_URI")
 DB_NAME     = os.getenv("DB_NAME", "POC")
@@ -206,7 +206,7 @@ def poll(db, minutes=3):
     print(f"\n  ℹ Builds continuam em background (produtos_search em 20M docs pode "
           f"levar bem mais que {minutes} min). O app detecta automaticamente via "
           f"$listSearchIndexes — acompanhe pelo KPI 'Índices Ativos' ou rode:\n"
-          f"     python3 setup_search_indexes.py --status")
+          f"     python3 scripts/setup_search_indexes.py --status")
 
 
 def ensure_btree_indexes(db):

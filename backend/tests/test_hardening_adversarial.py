@@ -16,6 +16,7 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(ROOT))
+sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "scripts"))
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost/test")
 
 from fastapi.testclient import TestClient  # noqa: E402

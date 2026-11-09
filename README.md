@@ -25,7 +25,7 @@ The UI text is in Brazilian Portuguese on purpose (Brazilian audience); the docu
 
 ![Hybrid tab running native $rankFusion, with a real rank_vector and no "NA"](docs/screenshots/hybrid-rrf.png)
 
-A synthetic catalog with near-identical text across products in the same subcategory produces mass ties in the Atlas Search lexical score, and a tied score collapses `$rankFusion` (same rank for everyone) and `$scoreFusion`/`minMaxScaler` (`0/0 → 0` for everyone). This was fixed in data generation (`populate_marketplace.py`: attributes plus a second axis of variation per product); see [ADR-001](docs/adr/0001-rankfusion-vs-scorefusion.md) for the full root cause and before/after evidence. `$scoreFusion` now produces a differentiated real score:
+A synthetic catalog with near-identical text across products in the same subcategory produces mass ties in the Atlas Search lexical score, and a tied score collapses `$rankFusion` (same rank for everyone) and `$scoreFusion`/`minMaxScaler` (`0/0 → 0` for everyone). This was fixed in data generation (`scripts/populate_marketplace.py`: attributes plus a second axis of variation per product); see [ADR-001](docs/adr/0001-rankfusion-vs-scorefusion.md) for the full root cause and before/after evidence. `$scoreFusion` now produces a differentiated real score:
 
 ![$scoreFusion with a differentiated real score per product, no collapse to zero](docs/screenshots/hybrid-scorefusion.png)
 
