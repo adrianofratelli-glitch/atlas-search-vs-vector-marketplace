@@ -109,6 +109,12 @@ O agente LangGraph e seu checkpointer MongoDB (`MongoDBSaver`) só são constru�
 
 `/agent` e `/reviews-rag` compartilham um semáforo (`AI_MAX_CONCURRENCY`, default 4, `backend/main.py`). Saturado, responde HTTP 429 em vez de enfileirar — numa demo, uma requisição de LLM travada é pior que uma recusa explicada.
 
+### 7. Detalhes que evitam leitura errada na demo
+
+- **Cache de índices invalidado no erro.** `safe_aggregate()` chama `invalidate_index_cache()` ao detectar "index not found", para que o badge de "mesmo corpus" e a elegibilidade do `$rankFusion` não fiquem presos a uma leitura obsoleta durante rebuild ou drop de índice.
+- **Formato inesperado de `scoreDetails` é logado.** `_parse_rank_fusion_details()` registra warning quando `scoreDetails.details` não vem no formato esperado, em vez de reportar `rank_search`/`rank_vector` como `None` em silêncio.
+- **Aba Atlas Search sem resposta fora de ordem** (`frontend/src/tabs/AtlasSearch.jsx`, `requestId`/`searchPending`): facetas atrasadas de uma busca anterior são descartadas, o envio duplicado é bloqueado e o highlight acompanha a consulta que de fato executou.
+
 ## Como rodar
 
 ```bash

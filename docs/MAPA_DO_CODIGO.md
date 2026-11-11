@@ -41,7 +41,7 @@ scripts/
 docs/briefing/                    Briefings
 docs/adr/                         Decisão de arquitetura (RRF x RSF)
 docs/screenshots/                 Capturas
-start.sh, setup.sh, docker/, Dockerfile, nginx.conf   Subir e empacotar
+start.sh, docker/, Dockerfile, nginx.conf             Subir e empacotar
 ```
 
 Collections: `produtos` (catálogo grande, 500 mil na demo), `produtos_vector` (subconjunto espelhado, base da busca vetorial e híbrida), `avaliacoes`, `sinonimos` (fonte do mapeamento de sinônimos), `catalog_sync_state` (token de retomada do espelho), `marketplace_checkpoints` e `marketplace_checkpoint_writes` (memória do agente; nomes em `backend/agent.py:34-35`). Banco padrão: `POC` (`backend/atlas.py:24`, variável `DB_NAME`). Índices: `produtos_search` (Atlas Search em `produtos`), `produtos_vector` (Vector Search com autoEmbed no campo `descricao`, na collection de mesmo nome), e `produtos_vector_search` (índice textual em `produtos_vector`, necessário para `$rankFusion`/`$scoreFusion` na mesma coleção).
