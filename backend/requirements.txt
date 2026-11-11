@@ -13,5 +13,5 @@ langfuse>=2,<3  # v3+/v4 SDK changes the API and fails silently; tracing is fail
 
 # Pisos de segurança para dependências transitivas.
 anyio>=4.14.2,<5
-langgraph-sdk>=0.4.4,<0.5
+langgraph-sdk>=0.4.14,<0.5
 urllib3>=2.8,<3
