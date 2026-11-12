@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Índice de busca ausente ou ainda não consultável deixa de virar "0 resultados" silencioso: `safe_aggregate` confere `$listSearchIndexes` (antes e diante de resposta vazia) e devolve o motivo, que a UI mostra em banner. Medido no Atlas 9.0.7: `$search`/`$vectorSearch`/`$searchMeta` com índice inexistente não geram erro.
+- Fallback de `$rankFusion`/`$scoreFusion` nomeia a causa real (índice lexical em construção, índice não consultável) e repassa o erro do RRF de fallback.
+- `$rerank` opcional após o `$rankFusion` (`POST /hybrid-native` com `rerank: true`, checkbox na aba Híbrida), com volta ao `$rankFusion` puro se o cluster recusar ([ADR-003](docs/adr/0003-rerank-opcional-apos-rankfusion.md)).
+- Eval de qualidade: modo `hybrid_rerank`, deltas rerank − híbrido, latência p50 por modo, erro de índice contado como erro.
+
 - Reorganização: `populate_marketplace.py` e `setup_search_indexes.py` saíram da raiz para `scripts/`; imports, testes e docs ajustados.
 - Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
 

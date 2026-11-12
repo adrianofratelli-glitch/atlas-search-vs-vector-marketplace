@@ -48,6 +48,8 @@ O backend sempre informa qual caminho executou; a interface é obrigada a mostra
 - se a busca híbrida usou `$rankFusion`/`$scoreFusion` nativos ou caiu no RRF calculado na aplicação, e o motivo (`native: false`, `reason`);
 - se a busca com sinônimos caiu no fallback sem sinônimo (`synonyms_fallback`);
 - se o `$scoreFusion` sofreu o colapso de normalização conhecido (`degraded_reason` — ver `queries.md` seção 9 e o ADR `docs/adr/0001-rankfusion-vs-scorefusion.md`).
+- se um índice de busca está ausente ou ainda não consultável (`PENDING`/`BUILDING`): a coluna afetada mostra o banner "Degradado — busca vetorial: Índice de busca indisponível: …" em vez de uma lista vazia (`degraded` em `/compare`, `error`/`reason` nas demais);
+- se o `$rerank` pedido na aba Híbrida foi aplicado (badge `$rerank rerank-2.5` e coluna Rerank) ou não, e por quê (`rerank.applied`, `rerank.reason` em banner);
 - se o `$rankFusion` rodou sem o desempate do lexical porque o índice não declara `produto_id` como `token` (`degraded_reason` em banner — ver `queries.md` seção 8 e `docs/adr/0002-rankfusion-desempate-lexical.md`).
 
 Um badge visível custa pouco espaço de tela e compra credibilidade; esconder um fallback é o tipo de coisa que, descoberta na pergunta seguinte do cliente, custa a reunião inteira.
@@ -69,6 +71,7 @@ Toda mensagem de erro passa por `describeError` (`frontend/src/api.js`), que diz
 | `hybrid-rrf.png` | aba Híbrida, modo RRF |
 | `hybrid-rankfusion-residual.png` | aba Híbrida, `$rankFusion` com `rank_search` empatado, antes do desempate do ADR-002 (registro histórico) |
 | `hybrid-scorefusion.png` | aba Híbrida, modo `$scoreFusion` |
+| `hybrid-rerank.png` | aba Híbrida, `$rankFusion` seguido de `$rerank` (checkbox ligado): coluna Rerank, badge `$rerank rerank-2.5` e o rank de cada busca preservado (ADR-003) |
 | `similares.png` | aba Similares |
 | `analytics.png` | aba Analytics |
 | `ai-agent.png` | aba Agente |

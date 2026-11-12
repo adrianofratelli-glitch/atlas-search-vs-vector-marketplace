@@ -138,6 +138,8 @@ Rodar (do README): `.venv/bin/python -m unittest discover -s backend/tests` (off
 | `backend/tests/test_catalog_sync.py` | Regras puras do espelho: planejar evento, pular o que é seed, aplicar, interruptor |
 | `backend/tests/test_agent_pipelines.py` | Os pipelines das tools usam `$vectorSearch` e `autocomplete` com fuzzy |
 | `backend/tests/test_request_models.py` | `SimilarReq` exige `produto_id` ou `nome` |
+| `backend/tests/test_index_readiness.py` | Índice ausente ou não consultável vira erro, não lista vazia: extração dos índices (inclusive dentro de `$rankFusion`), releitura do cache negativo, resposta vazia relida, fail-open sem listagem, `degraded` no `/compare`, motivo do fallback híbrido |
+| `backend/tests/test_rerank.py` | Cascata `$rankFusion` → `$rerank` (ADR-003): estágios, paridade do trace, volta ao `$rankFusion` puro se o `$rerank` for recusado, métricas novas do eval |
 | `backend/tests/test_observability.py` | Contadores de requisição e de negócio |
 | `frontend/tests/e2e_demo.py` | Roteiro ponta a ponta da demo |
 | `frontend/tests/ui_visual_smoke.py` | Smoke visual das abas |

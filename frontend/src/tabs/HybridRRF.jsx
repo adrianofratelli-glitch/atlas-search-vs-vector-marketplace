@@ -197,9 +197,9 @@ export default function HybridRRF() {
             </Banner>
           )}
           <Body style={{ color: T.text2, fontSize: 12, marginBottom: 12 }}>
-            {rerankApplied ? "Posição final é a ordem do reranker (coluna Rerank). " : ""}
-            Posição final é a ordem retornada nesta execução. Posições diferentes não indicam maior
-            relevância quando os scores finais empatam.
+            {rerankApplied
+              ? "Posição final é a ordem do reranker (coluna Rerank); o rank e o RRF de cada busca mostram de onde cada candidato veio."
+              : "Posição final é a ordem retornada nesta execução. Posições diferentes não indicam maior relevância quando os scores finais empatam."}
             {!isScoreResult && " Abaixo de cada rank está sua contribuição para o RRF; — indica ausência naquela lista candidata, com contribuição zero. Valores arredondados a 5 casas decimais."}
           </Body>
           <div style={{ overflowX: "auto" }} role="region" aria-label="Resultados da fusão" tabIndex={0}>

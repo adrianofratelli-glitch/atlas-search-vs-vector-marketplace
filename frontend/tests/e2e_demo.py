@@ -7,15 +7,17 @@ uncaught page errors. Point the backend at a `*_test` database:
 
     DB_NAME=marketplace_test bash start.sh
     .venv/bin/python frontend/tests/e2e_demo.py          # add --no-ai to skip LLM steps
+    E2E_BASE_URL=http://127.0.0.1:18273 .venv/bin/python frontend/tests/e2e_demo.py   # app on another port
 """
 
+import os
 import re
 import sys
 import time
 
 from playwright.sync_api import sync_playwright
 
-BASE_URL = "http://127.0.0.1:5273"
+BASE_URL = os.getenv("E2E_BASE_URL", "http://127.0.0.1:5273")  # own port when the demo port is busy
 SECRET_RX = re.compile(r"mongodb\+srv://|x-api-key|sk-ant-|GROVE_API_KEY|Bearer\s+\S{12,}", re.I)
 AI = "--no-ai" not in sys.argv
 results = []

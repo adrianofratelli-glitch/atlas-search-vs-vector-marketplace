@@ -15,7 +15,7 @@ pelo frontend React via axios.
 | POST   | `/search/facets` | Facetas em tempo real via `$searchMeta`                          |
 | POST   | `/compare`       | Full-text vs vetorial vs RRF, lado a lado                        |
 | POST   | `/hybrid`        | RRF ajustável (`k`, `n_search`, `n_vector`)                      |
-| POST   | `/hybrid-native` | `$rankFusion` nativo (Atlas 8.1+) com fallback para RRF          |
+| POST   | `/hybrid-native` | `$rankFusion` nativo (Atlas 8.1+) com fallback para RRF; `rerank: true` acrescenta `$rerank` (Voyage, ADR-003) e informa `rerank.applied` |
 | POST   | `/hybrid-score-fusion` | `$scoreFusion` nativo (RSF) com fallback para RRF          |
 | GET    | `/analytics`     | Agregações paralelas via `$facet` (cache de 5 minutos)           |
 | POST   | `/similar`       | "Mais como este" vetorial com pré-filtro nativo                  |

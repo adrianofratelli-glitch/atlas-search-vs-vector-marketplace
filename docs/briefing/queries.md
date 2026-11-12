@@ -343,6 +343,21 @@ Local: `backend/atlas.py` (`hybrid_native`), parsing do detalhe em `_parse_rank_
 
 `rank_fusion_tiebreak_supported()` (`backend/atlas.py`) confere na definição do índice (`$listSearchIndexes`) se `produto_id` é `token`. Se não for, o pipeline roda sem `sort` e a resposta traz `degraded_reason`, mostrado em banner na aba Híbrida. Sub-pipelines de `$rankFusion` não aceitam `$sort` por `{$meta: "searchScore"}` depois do `$search` ("query requires $search score metadata"), por isso o desempate fica dentro do próprio `$search`.
 
+### 8.1 Cascata opcional: `$rankFusion` → `$rerank`
+
+Local: `rerank_stages()` e `hybrid_native(query, limit, rerank=True)` (`backend/atlas.py`); `POST /hybrid-native` com `"rerank": true`; checkbox na aba Híbrida. Com o rerank, o pipeline acima ganha dois estágios entre o `$rankFusion` e o `$limit`, e o `$project` passa a ler os campos guardados:
+
+```python
+{"$addFields": {"rrf_score": {"$meta": "score"}, "rrf_details": {"$meta": "scoreDetails"}}},
+{"$rerank": {"query": {"text": query}, "path": "descricao",
+             "numDocsToRerank": 2 * limit, "model": RERANK_MODEL}},      # RERANK_MODEL padrão: rerank-2.5
+{"$limit": limit},
+{"$project": {"_id": 0, "produto_id": 1, "nome": 1, "categoria": 1, "preco": 1,
+              "rrf_score": 1, "rerank_score": {"$meta": "score"}, "scoreDetails": "$rrf_details"}},
+```
+
+**Por que existe** ([ADR-003](../adr/0003-rerank-opcional-apos-rankfusion.md)): o RRF só vê posições; o reranker lê a descrição de cada candidato fundido. Eval no banco da demo (26 consultas, gabarito validado, 2026-11-12): recall@5 0,923 → 0,962, MRR 0,846–0,865 → 0,962, P@5 0,74 → 0,93; latência p50 664 → 913 ms. O `$addFields` vem antes porque o `$rerank` substitui `$meta: "score"`; sem ele a aba perderia o rank de cada busca. Se o cluster recusar o `$rerank`, a resposta volta ao `$rankFusion` puro com `rerank.applied = false` e `rerank.reason`. Opt-in: uma chamada de rerank Voyage por consulta.
+
 ---
 
 ## 9. Híbrida nativa — $scoreFusion
@@ -502,7 +517,9 @@ Local: `backend/atlas.py` (`get_search_indexes`) e funções derivadas.
 [{"$listSearchIndexes": {}}]
 ```
 
-Cache com TTL de 60s por coleção (`_index_cache`, `backend/atlas.py`), invalidado imediatamente quando uma query falha com erro "index not found" (`invalidate_index_cache`, `backend/atlas.py`) — evita que o badge de "mesmo corpus"/elegibilidade de `$rankFusion` fique preso a uma leitura obsoleta durante rebuild ou drop de índice.
+Cache com TTL de 60s por coleção (`_index_cache`, `backend/atlas.py`). Uma leitura negativa (índice ausente ou não consultável) é relida na hora, sem esperar o TTL, e uma resposta vazia também força releitura; assim um índice que acabou de ficar `READY` não fica bloqueado e um índice removido depois do cache é detectado. Se a listagem falhar, `_index_listing()` devolve `None` ("estado desconhecido"), que não é lido como "sem índice".
+
+**Gate de prontidão em toda consulta de busca** (`check_search_indexes`, chamado por `safe_aggregate`, `backend/atlas.py`): `search_indexes_used()` extrai os nomes dos índices de `$search`, `$searchMeta` e `$vectorSearch`, inclusive nos sub-pipelines de `$rankFusion`/`$scoreFusion`, e `index_unavailable_reason()` devolve o motivo legível quando algum está ausente ou com `queryable: false`. Medido no Atlas 9.0.7 (2026-11-12): índice inexistente devolve `[]` em `$search` e `$vectorSearch` e `{count: {total: 0}}` em `$searchMeta`, **sem erro**; por isso a checagem não pode depender de exceção do driver.
 
 Funções construídas em cima dela:
 - `get_index_status()` (`backend/atlas.py`) — status real (`READY`/`BUILDING`/...) de cada índice, usado no `GET /stats`.

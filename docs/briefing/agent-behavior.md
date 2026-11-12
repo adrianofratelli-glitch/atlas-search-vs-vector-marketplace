@@ -37,7 +37,7 @@ Cada pipeline que a ferramenta executa vem de uma função `_pipe_*` compartilha
 
 ## Degradação graciosa aplicada ao agente
 
-Antes de rodar, `busca_semantica` e `buscar_produto` checam se o índice necessário está `READY` via `_index_ready()` (`backend/agent.py`) — mesma lógica de introspecção via `$listSearchIndexes` usada nas abas manuais. Se o índice não estiver pronto ou o cluster estiver inacessível, a ferramenta devolve uma mensagem de erro legível **para o modelo**, em vez de deixar uma exceção crua do PyMongo estourar dentro do contexto da conversa — um erro de driver dentro do prompt tende a produzir uma resposta alucinada sobre infraestrutura, que é o pior tipo de falha numa demo.
+Antes de rodar, `busca_semantica` e `buscar_produto` checam se o índice necessário está `READY` via `_index_ready()` (`backend/agent.py`) — mesma lógica de introspecção via `$listSearchIndexes` usada nas abas manuais. Se o índice não estiver pronto ou o cluster estiver inacessível, a ferramenta devolve uma mensagem de erro legível **para o modelo**, em vez de deixar uma exceção crua do PyMongo estourar dentro do contexto da conversa — um erro de driver dentro do prompt tende a produzir uma resposta alucinada sobre infraestrutura, que é o pior tipo de falha numa demo. Além disso, toda tool passa por `safe_aggregate()` (`backend/atlas.py`), que recusa com motivo legível uma consulta cujo índice de busca esteja ausente ou não `queryable` (o Atlas devolveria lista vazia sem erro, e o modelo leria "nenhum produto").
 
 ## Escopo — o que o agente recusa responder
 

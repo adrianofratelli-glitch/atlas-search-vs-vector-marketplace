@@ -23,9 +23,13 @@ The UI text is in Brazilian Portuguese on purpose (Brazilian audience); the docu
 
 ![Lexical search returning zero next to vector search returning relevant products](docs/screenshots/search-vs-vector.png)
 
-**3. Hybrid, RRF vs RSF**: two native engines side by side. `$rankFusion` (RRF) combines by rank position; `$scoreFusion` (RSF) combines by real scores normalized with `minMaxScaler`. It falls back to RRF computed in the application, with the reason shown in the UI, when the native stage's requirements are not met (no lexical index on the vector collection, or a cluster version below the minimum).
+**3. Hybrid, RRF vs RSF**: two native engines side by side. `$rankFusion` (RRF) combines by rank position; `$scoreFusion` (RSF) combines by real scores normalized with `minMaxScaler`. It falls back to RRF computed in the application, with the reason shown in the UI, when the native stage's requirements are not met (no lexical index on the vector collection, an index still building, or a cluster version below the minimum). An optional **Rerank** checkbox appends `$rerank` (Voyage reranker run by Atlas) after `$rankFusion`: the table keeps each engine's rank and RRF contribution and adds the reranker score ([ADR-003](docs/adr/0003-rerank-opcional-apos-rankfusion.md)). If the cluster rejects `$rerank`, the plain `$rankFusion` answer comes back with a banner saying why.
 
 ![Hybrid tab running native $rankFusion, with a real rank_vector and no "NA"](docs/screenshots/hybrid-rrf.png)
+
+With the Rerank checkbox on, the reranker reorders the fused candidates by reading their descriptions; the Rerank column shows its score next to each engine's rank. For "Gel-Kayano 30" the top is all ASICS Gel-Kayano 30 units; in the eval (top 10), plain fusion put a facial cleansing "gel" first because the first lexical and first vector hits tie at `1/61`:
+
+![Hybrid tab with $rankFusion followed by $rerank: Rerank column, $rerank badge, ranks per engine kept](docs/screenshots/hybrid-rerank.png)
 
 A synthetic catalog with near-identical text across products in the same subcategory produces mass ties in the Atlas Search lexical score, and a tied score collapses `$rankFusion` (same rank for everyone) and `$scoreFusion`/`minMaxScaler` (`0/0 → 0` for everyone). This was fixed in data generation (`scripts/populate_marketplace.py`: attributes plus a second axis of variation per product); see [ADR-001](docs/adr/0001-rankfusion-vs-scorefusion.md) for the full root cause and before/after evidence. `$scoreFusion` now produces a differentiated real score:
 
@@ -66,7 +70,7 @@ POC
 
 **The two collections are kept in step by a change stream, not by an external pipeline.** `backend/catalog_sync.py` runs inside the API process: every insert, replace or update on `produtos` is upserted into `produtos_vector` (keyed by `produto_id`), every delete is removed from it, and autoEmbed then embeds the new description inside Atlas. The resume token is stored in `catalog_sync_state`, so a restart continues where it stopped; replays are idempotent. A catalog rebuild (`scripts/reset_demo.py --rebuild-catalog`) pauses the mirror so the seed's sample is preserved. `GET /health` reports the mirror (`catalog_sync`); `CATALOG_SYNC=0` turns it off. The mirror only runs while the API (or `scripts/bench_thesis.py`) runs: writes made while it is down are applied on the next start if they are still in the oplog window.
 
-The application detects available indexes through `$listSearchIndexes` and degrades gracefully.
+The application detects available indexes through `$listSearchIndexes` and degrades gracefully. That check runs on every search query, not only for choosing the hybrid path: on Atlas 9.0.7, `$search`, `$searchMeta` and `$vectorSearch` against an index that does not exist or is still `PENDING`/`BUILDING` return an **empty result with no error**, so without it a building vector index looked like "0 results". The backend now answers "`produtos_vector` is BUILDING and not queryable yet" and the UI shows it as a banner.
 
 ## Setup
 
@@ -169,10 +173,10 @@ Native fusion is not faster here; its value is one round trip and fusion logic t
 
 ## Quality evaluation (avaliação de qualidade)
 
-`eval/run_quality.py` measures the thesis on relevance, not latency: 26 queries with a known target product from the seed catalog (exact model name, typo, natural-language intent, brand + intent) run through the backend's own functions (`compare_search_vector`, `hybrid_native`) on the same corpus, and each mode (lexical, vector, native `$rankFusion` hybrid, application RRF) is scored by recall@5 and MRR over the top 10. Read-only on the database in `DB_NAME`; one Voyage query embedding per vector leg; no LLM.
+`eval/run_quality.py` measures the thesis on relevance, not latency: 26 queries with a known target product from the seed catalog (exact model name, typo, natural-language intent, brand + intent) run through the backend's own functions (`compare_search_vector`, `hybrid_native`) on the same corpus, and each mode (lexical, vector, native `$rankFusion` hybrid, application RRF, hybrid + `$rerank`) is scored by recall@5, MRR and precision@5 over the top 10, with the p50 latency of each mode. Read-only on the database in `DB_NAME`; one Voyage query embedding per vector leg and one Voyage rerank call per query; no LLM. A missing or building index counts as an error, not as a miss.
 
 ```bash
-.venv/bin/python eval/run_quality.py --out /tmp/search_quality.json   # ~40 s, writes JSON, always exits 0
+.venv/bin/python eval/run_quality.py --out /tmp/search_quality.json   # ~2 min, writes JSON, always exits 0
 ```
 
 Measured on the demo db (500K, 2026-11-12, after [ADR-002](docs/adr/0002-rankfusion-desempate-lexical.md), validated golden set):
@@ -181,10 +185,11 @@ Measured on the demo db (500K, 2026-11-12, after [ADR-002](docs/adr/0002-rankfus
 |---|---|---|
 | lexical (`$search`) | 0.46 | 0.46 |
 | vector (`$vectorSearch`) | 0.85 | 0.85 |
-| native hybrid (`$rankFusion`) | **0.92** | 0.87 |
+| native hybrid (`$rankFusion`) | **0.92** | 0.85–0.87 |
 | application RRF | 0.92 | 0.69 |
+| hybrid + `$rerank` (opt-in, ADR-003) | **0.96** | **0.96** |
 
-Native hybrid matches or beats each single mode on recall@5 and keeps 100% on exact-name and typo queries. Before ADR-002 it scored recall@5 0.77 and MRR 0.70 (draft golden set): tied lexical scores got the same rank inside `$rankFusion` and pushed the vector hits out of the top 5. MRR varies between runs (0.885 / 0.904) because the first lexical and first vector hits tie at `1/61` and the server breaks that fusion tie. The weekly eval keeps floors for these numbers (`hybrid >= lexical`, `hybrid >= vector`, `application RRF >= each mode`).
+Native hybrid matches or beats each single mode on recall@5 and keeps 100% on exact-name and typo queries. Before ADR-002 it scored recall@5 0.77 and MRR 0.70 (draft golden set): tied lexical scores got the same rank inside `$rankFusion` and pushed the vector hits out of the top 5. MRR varies between runs and with the candidate limit (0.846 to 0.87 on the validated set) because the first lexical and first vector hits tie at `1/61` and the server breaks that fusion tie. The opt-in `$rerank` cascade removes that dependence: it reads each fused candidate's description, puts the relevant product first in n02, d02, i03 and i04, and fixes m01 ("Nike shoes for a marathon", where both engines rank the wrong Nike model first); precision@5 goes from 0.74 to 0.93, at about 250 ms more at the p50 (664 → 913 ms). i05 ("protein to gain muscle mass") is still missed by every mode: no whey or mass gainer reaches the fused candidates. The weekly eval keeps floors for these numbers (`hybrid >= lexical`, `hybrid >= vector`, `application RRF >= each mode`).
 
 The golden set in `eval/golden.json` was **reviewed and validated** on 2026-11-12 (targets from the synthetic catalog in `scripts/populate_marketplace.py`, judged by product model; the two intent queries i04 "professional camera" and i05 "muscle-gain supplement" were narrowed to professional cameras and whey/mass gainer). Numbers above use the validated set.
 
