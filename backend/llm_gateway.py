@@ -132,12 +132,17 @@ def _mask_fn():
         return lambda text: cpf.sub("<CPF>", email.sub("<EMAIL>", text))
 
 
+MASK_FAILED = "<texto omitido>"
+
+
 def mask_pii(text: str) -> str:
-    """PII mask applied BEFORE any trace is created (Langfuse)."""
+    """PII mask applied BEFORE any trace is created (Langfuse). If the mask
+    itself fails, returns MASK_FAILED: callers that send text to a third party
+    must check for it instead of sending the placeholder."""
     try:
         return _mask_fn()(text or "")
     except Exception:  # noqa: BLE001
-        return "<texto omitido>"
+        return MASK_FAILED
 
 
 # Minimal local fallback (used only when pov-shared is not installed, e.g. a

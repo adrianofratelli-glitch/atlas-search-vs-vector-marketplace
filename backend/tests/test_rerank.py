@@ -73,11 +73,31 @@ class RerankPipeline(unittest.TestCase):
         self.assertEqual(len(executed), 2)
 
     def test_rerank_query_is_pii_masked(self):
-        add, rr = atlas.rerank_stages("fone para joao.silva@example.com cpf 123.456.789-09", 20)
-        text = rr["$rerank"]["query"]["text"]
+        q = "fone para joao.silva@example.com cpf 123.456.789-09"
+        with mock.patch.object(atlas, "get_search_indexes", return_value=INDEXES), \
+                mock.patch.object(atlas, "safe_aggregate", return_value=([DOC], None)):
+            out = atlas.hybrid_native(q, limit=10, rerank=True)
+        text = next(s for s in out["pipeline"] if "$rerank" in s)["$rerank"]["query"]["text"]
         self.assertNotIn("joao.silva@example.com", text)
         self.assertNotIn("123.456.789-09", text)
         self.assertIn("fone", text)
+
+    def test_mask_failure_skips_rerank(self):
+        import llm_gateway
+        executed = []
+
+        def fake(coll, pipe):
+            executed.append(pipe)
+            return [{**DOC, "score": 0.03}], None
+        with mock.patch.object(llm_gateway, "_mask_fn", side_effect=RuntimeError("guardrails down")), \
+                mock.patch.object(atlas, "get_search_indexes", return_value=INDEXES), \
+                mock.patch.object(atlas, "safe_aggregate", side_effect=fake):
+            out = atlas.hybrid_native("fone", limit=10, rerank=True)
+        self.assertTrue(out["native"])
+        self.assertFalse(out["rerank"]["applied"])
+        self.assertIn("Máscara de PII indisponível", out["rerank"]["reason"])
+        self.assertTrue(all("$rerank" not in str(p) for p in executed))
+        self.assertNotIn(llm_gateway.MASK_FAILED, str(executed))
 
     def test_cluster_down_or_timeout_is_not_blamed_on_rerank(self):
         for err in (atlas.ATLAS_UNREACHABLE, atlas.QUERY_TIMEOUT_MSG):

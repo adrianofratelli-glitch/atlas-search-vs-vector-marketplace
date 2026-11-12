@@ -356,7 +356,7 @@ Local: `rerank_stages()` e `hybrid_native(query, limit, rerank=True)` (`backend/
               "rrf_score": 1, "rerank_score": {"$meta": "score"}, "scoreDetails": "$rrf_details"}},
 ```
 
-**Por que existe** ([ADR-003](../adr/0003-rerank-opcional-apos-rankfusion.md)): o RRF só vê posições; o reranker lê a descrição de cada candidato fundido. Eval no banco da demo (26 consultas, gabarito validado, 2026-11-12): recall@5 0,923 → 0,962, MRR 0,846–0,865 → 0,962, P@5 0,74 → 0,93; latência p50 664 → 913 ms. O `$addFields` vem antes porque o `$rerank` substitui `$meta: "score"`; sem ele a aba perderia o rank de cada busca. Se o cluster recusar o `$rerank`, a resposta volta ao `$rankFusion` puro com `rerank.applied = false` e `rerank.reason`. Opt-in: uma chamada de rerank Voyage por consulta.
+**Por que existe** ([ADR-003](../adr/0003-rerank-opcional-apos-rankfusion.md)): o RRF só vê posições; o reranker lê a descrição de cada candidato fundido. Eval no banco da demo (26 consultas, gabarito validado, 2026-11-12): recall@5 0,923 → 0,962, MRR 0,846–0,865 → 0,962, P@5 0,74 → 0,93; latência p50 664 → 913 ms. O `$addFields` vem antes porque o `$rerank` substitui `$meta: "score"`; sem ele a aba perderia o rank de cada busca. Se o cluster recusar o `$rerank`, a resposta volta ao `$rankFusion` puro com `rerank.applied = false` e `rerank.reason`. Se o Atlas estiver inacessível ou a aggregation estourar o tempo, o erro volta como está, sem fallback e sem culpar o `$rerank`. O texto enviado ao reranker passa por `mask_pii` (`rerank_query_text`); se a própria máscara falhar, o `$rerank` não roda e a resposta traz o `$rankFusion` puro com `rerank.applied = false` e o motivo. Opt-in: uma chamada de rerank Voyage por consulta.
 
 ---
 
@@ -517,7 +517,7 @@ Local: `backend/atlas.py` (`get_search_indexes`) e funções derivadas.
 [{"$listSearchIndexes": {}}]
 ```
 
-Cache com TTL de 60s por coleção (`_index_cache`, `backend/atlas.py`). Uma leitura negativa (índice ausente ou não consultável) é relida na hora, sem esperar o TTL, e uma resposta vazia também força releitura; assim um índice que acabou de ficar `READY` não fica bloqueado e um índice removido depois do cache é detectado. Se a listagem falhar, `_index_listing()` devolve `None` ("estado desconhecido"), que não é lido como "sem índice".
+Cache com TTL de 60s por coleção (`_index_cache`, `backend/atlas.py`). Uma leitura negativa (índice ausente ou não consultável) e uma resposta vazia fazem `$listSearchIndexes` ser relido, no máximo a cada 5 s (`_INDEX_RECHECK_TTL`), sem esperar o TTL de 60 s; assim um índice que acabou de ficar `READY` não fica bloqueado e um índice removido depois do cache é detectado. Se a listagem falhar, `_index_listing()` devolve `None` ("estado desconhecido"), que não é lido como "sem índice".
 
 **Gate de prontidão em toda consulta de busca** (`check_search_indexes`, chamado por `safe_aggregate`, `backend/atlas.py`): `search_indexes_used()` extrai os nomes dos índices de `$search`, `$searchMeta` e `$vectorSearch`, inclusive nos sub-pipelines de `$rankFusion`/`$scoreFusion`, e `index_unavailable_reason()` devolve o motivo legível quando algum está ausente ou com `queryable: false`. Medido no Atlas 9.0.7 (2026-11-12): índice inexistente devolve `[]` em `$search` e `$vectorSearch` e `{count: {total: 0}}` em `$searchMeta`, **sem erro**; por isso a checagem não pode depender de exceção do driver.
 

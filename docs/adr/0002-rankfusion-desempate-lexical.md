@@ -45,7 +45,7 @@ Por tipo, recall@5 do híbrido nativo: nome 1,00 → 1,00; digitação 1,00 → 
 | Mais variação no texto sintético (proposta do ADR-001) | não medido | o empate vem de unidades do mesmo modelo, o que catálogo real também tem; atacaria o sintoma |
 
 ## Consequências
-- Positivas: híbrido nativo ≥ vetorial e ≥ lexical em recall@5; MRR sobe de 0,70 para 0,885 ou mais, praticamente igual ao vetorial (0,891) e acima do RRF da aplicação (0,731). A aba Híbrida mostra `rank_search` 1, 2, 3... intercalado com `rank_vector`.
+- Positivas: híbrido nativo ≥ vetorial e ≥ lexical em recall@5; MRR sobe de 0,70 para 0,885 ou mais no gabarito rascunho, praticamente igual ao vetorial (0,891) e acima do RRF da aplicação (0,731); no gabarito validado o MRR do híbrido fica em 0,846–0,87. A aba Híbrida mostra `rank_search` 1, 2, 3... intercalado com `rank_vector`.
 - Negativas: o `sort` no `$search` custa um pouco de latência no mongot (ordenação por dois campos); não medido em separado. O desempate por `produto_id` é arbitrário entre documentos de mesma relevância, mas determinístico.
 - `$scoreFusion` não muda: ele combina scores normalizados, não ranks, e o empate não altera a fusão.
 - Reversibilidade: alta. Remover `RANK_FUSION_LEXICAL_SORT` do pipeline volta ao comportamento anterior.

@@ -958,14 +958,20 @@ def rank_fusion_tiebreak_supported(search_index: str) -> bool:
 RERANK_MODEL = os.getenv("RERANK_MODEL", "rerank-2.5")
 
 
-def rerank_stages(query: str, num_docs: int) -> list:
-    """$rerank after the fusion. $rerank replaces $meta "score", so the RRF
-    score and its scoreDetails are kept in fields first. The query text goes to
-    the Voyage reranker (a third party), so PII is masked first; the masked text
-    is what the MQL trace shows."""
-    from llm_gateway import mask_pii  # lazy: keeps `import atlas` light
+def rerank_query_text(query: str) -> str | None:
+    """Text sent to the Voyage reranker (a third party): PII-masked first.
+    None when the mask itself failed, so the caller skips $rerank instead of
+    reranking against a placeholder."""
+    from llm_gateway import MASK_FAILED, mask_pii  # lazy: keeps `import atlas` light
 
-    query = mask_pii(query)
+    masked = mask_pii(query)
+    return None if masked == MASK_FAILED else masked
+
+
+def rerank_stages(query: str, num_docs: int) -> list:
+    """$rerank after the fusion (pure; `query` must already be masked, see
+    rerank_query_text). $rerank replaces $meta "score", so the RRF score and
+    its scoreDetails are kept in fields first."""
     return [
         {"$addFields": {"rrf_score": {"$meta": "score"}, "rrf_details": {"$meta": "scoreDetails"}}},
         {"$rerank": {"query": {"text": query}, "path": "descricao",
@@ -1017,7 +1023,14 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
         }},
     ]
     if rerank:
-        pipeline += rerank_stages(query, 2 * limit)
+        rerank_text = rerank_query_text(query)
+        if rerank_text is None:
+            plain = hybrid_native(query, limit=limit, rerank=False)
+            plain["rerank"] = {"requested": True, "applied": False, "model": RERANK_MODEL,
+                               "reason": ("Máscara de PII indisponível: o $rerank não rodou para não "
+                                          "enviar a consulta sem máscara à Voyage. Exibindo só o $rankFusion.")}
+            return plain
+        pipeline += rerank_stages(rerank_text, 2 * limit)
         project = {"rrf_score": 1, "rerank_score": {"$meta": "score"}, "scoreDetails": "$rrf_details"}
     else:
         project = {"score": {"$meta": "score"}, "scoreDetails": {"$meta": "scoreDetails"}}

@@ -25,7 +25,7 @@ O cluster da demo (Atlas 9.0.7) aceita o estágio `$rerank` (reranker Voyage exe
 - O `$addFields` guarda o score RRF e o `scoreDetails` antes do `$rerank`, porque o `$rerank` substitui `$meta: "score"`. Assim a aba continua mostrando o rank de cada busca e a contribuição RRF, e ganha a coluna Rerank.
 - `numDocsToRerank = 2 * limit` cobre a união das duas listas candidatas (cada perna devolve até `limit`).
 - **Opcional e desligado por padrão** (`POST /hybrid-native` com `rerank: true`; checkbox na aba Híbrida). Cada consulta faz uma chamada de rerank à Voyage e soma cerca de 250 ms no p50 medido. O híbrido padrão, e o piso do eval semanal sobre ele, não mudam.
-- **Degradação:** se o cluster recusar o `$rerank` (versão sem o estágio, reranker limitado), a resposta é o `$rankFusion` puro com `rerank.applied = false` e o motivo, mostrado em banner. Se o problema for índice não pronto, vale o gate de `safe_aggregate` e o fallback normal do híbrido.
+- **Degradação:** se o cluster recusar o `$rerank` (versão sem o estágio, reranker limitado), a resposta é o `$rankFusion` puro com `rerank.applied = false` e o motivo, mostrado em banner. Se o problema for índice não pronto, vale o gate de `safe_aggregate` e o fallback normal do híbrido. Se o Atlas estiver inacessível ou a aggregation estourar o tempo, o erro volta como está, sem fallback e sem culpar o `$rerank`. O texto enviado ao reranker passa por `mask_pii` (`rerank_query_text`); se a própria máscara falhar, o `$rerank` não roda e a resposta traz o `$rankFusion` puro com `rerank.applied = false` e o motivo.
 - O `pipeline` devolvido é o objeto executado, com o `$rerank` visível no bloco MQL.
 
 ## Resultado (eval, banco da demo, 500K, 2026-11-12)
