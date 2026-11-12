@@ -22,7 +22,10 @@ O `$search` do sub-pipeline `textual` de `hybrid_native()` passa a ter `sort: {s
 
 Degradação graciosa: `rank_fusion_tiebreak_supported()` lê a definição do índice via `$listSearchIndexes`. Se `produto_id` não estiver como `token`, o pipeline roda sem `sort` (o `$search` falharia com "not indexed as sortable") e a resposta traz `degraded_reason`, que a aba Híbrida mostra em banner. O `pipeline` devolvido continua sendo o objeto executado.
 
-## Resultado (eval, banco da demo, 500K, 2026-11-12)
+## Resultado (eval, banco da demo, 500K, 2026-11-12, gabarito rascunho)
+
+> Números desta tabela são do **gabarito rascunho**. Depois da validação do gabarito (i04 só câmeras profissionais, i05 só whey e hipercalórico), o mesmo código mede recall@5: híbrido 0,923 / vetorial 0,846 / lexical 0,462; MRR do híbrido 0,846–0,87. O critério do ADR (híbrido ≥ vetorial e ≥ lexical) continua valendo. Ver [ADR-003](0003-rerank-opcional-apos-rankfusion.md) para os números atuais.
+
 | Modo | recall@5 antes | recall@5 depois | MRR antes | MRR depois |
 |---|---|---|---|---|
 | lexical | 0,500 | 0,500 | 0,500 | 0,500 |

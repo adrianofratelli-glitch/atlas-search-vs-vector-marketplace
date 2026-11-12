@@ -85,6 +85,11 @@ class SafeAggregateGate(unittest.TestCase):
     def setUp(self):
         atlas.invalidate_index_cache()
         self.addCleanup(atlas.invalidate_index_cache)
+        # Re-read window 0: every negative/empty answer re-lists (the window
+        # itself is covered by RecheckWindow below).
+        patcher = mock.patch.object(atlas, "_INDEX_RECHECK_TTL", 0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_pending_index_is_an_error_not_an_empty_list(self):
         db, calls = fake_db([[PENDING_VECTOR], [PENDING_VECTOR]], [])
@@ -130,6 +135,31 @@ class SafeAggregateGate(unittest.TestCase):
             res, err = atlas.safe_aggregate("produtos", [{"$match": {"x": 1}}])
         self.assertEqual((res, err), ([], None))
         self.assertEqual(calls["list"], 0)
+
+
+class RecheckWindow(unittest.TestCase):
+    """Zero lexical hits is a normal demo answer: a burst of empty searches
+    must not hit $listSearchIndexes every time (re-read at most every 5 s)."""
+
+    def setUp(self):
+        atlas.invalidate_index_cache()
+        self.addCleanup(atlas.invalidate_index_cache)
+
+    def test_empty_answers_within_window_list_once(self):
+        db, calls = fake_db([[READY_VECTOR]], [[], [], []])
+        with mock.patch.object(atlas, "db", db):
+            for _ in range(3):
+                self.assertEqual(atlas.safe_aggregate("produtos_vector", VECTOR_PIPE), ([], None))
+        self.assertEqual(calls["list"], 1)
+        self.assertEqual(calls["query"], 3)
+
+    def test_empty_answer_after_window_relists(self):
+        db, calls = fake_db([[READY_VECTOR], [READY_VECTOR]], [[]])
+        clock = iter([1000.0, 1000.0 + atlas._INDEX_RECHECK_TTL + 1])
+        with mock.patch.object(atlas, "db", db), \
+                mock.patch.object(atlas.time, "time", side_effect=lambda: next(clock)):
+            self.assertEqual(atlas.safe_aggregate("produtos_vector", VECTOR_PIPE), ([], None))
+        self.assertEqual(calls["list"], 2)
 
 
 class CompareSurfacesTheGap(unittest.TestCase):

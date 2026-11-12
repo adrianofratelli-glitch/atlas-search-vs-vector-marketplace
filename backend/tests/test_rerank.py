@@ -72,6 +72,22 @@ class RerankPipeline(unittest.TestCase):
         self.assertNotIn("$rerank", str(out["pipeline"]))
         self.assertEqual(len(executed), 2)
 
+    def test_rerank_query_is_pii_masked(self):
+        add, rr = atlas.rerank_stages("fone para joao.silva@example.com cpf 123.456.789-09", 20)
+        text = rr["$rerank"]["query"]["text"]
+        self.assertNotIn("joao.silva@example.com", text)
+        self.assertNotIn("123.456.789-09", text)
+        self.assertIn("fone", text)
+
+    def test_cluster_down_or_timeout_is_not_blamed_on_rerank(self):
+        for err in (atlas.ATLAS_UNREACHABLE, atlas.QUERY_TIMEOUT_MSG):
+            out, executed = self.run_native(lambda pipe, e=err: (None, e))
+            self.assertEqual(len(executed), 1)  # no second attempt without $rerank
+            self.assertEqual(out["error"], err)
+            self.assertFalse(out["rerank"]["applied"])
+            self.assertIsNone(out["rerank"]["reason"])
+            self.assertNotIn("$rerank indisponível", out["reason"])
+
     def test_default_has_no_rerank(self):
         out, _ = self.run_native(lambda pipe: ([{**DOC, "score": 0.03}], None), rerank=False)
         self.assertNotIn("$rerank", str(out["pipeline"]))

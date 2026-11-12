@@ -37,6 +37,7 @@ _client = MongoClient(
     maxPoolSize=max(1, int(os.getenv("MONGODB_MAX_POOL_SIZE", "50"))),
 )
 
+QUERY_TIMEOUT_MSG = "Operação cancelada — tempo limite de 10s atingido."
 ATLAS_UNREACHABLE = ("Atlas inacessível no momento (rede, IP fora da access list ou cluster pausado). "
                      "Verifique /health e tente novamente em instantes.")
 # One extra attempt for transient failures (connection reset, primary
@@ -64,7 +65,8 @@ def safe_aggregate(collection: str, pipeline: list):
     # A missing or not-yet-queryable search index does NOT raise: $search,
     # $searchMeta and $vectorSearch just return nothing (measured on Atlas
     # 9.0.7), and inside $rankFusion the other leg silently fills the page.
-    # Check $listSearchIndexes first, and re-check on an empty answer.
+    # Check $listSearchIndexes first, and re-check on an empty answer (at most
+    # once per _INDEX_RECHECK_TTL: zero lexical hits is a normal demo answer).
     unavailable = check_search_indexes(collection, pipeline)
     if unavailable:
         return None, unavailable
@@ -72,12 +74,12 @@ def safe_aggregate(collection: str, pipeline: list):
         try:
             results = list(db[collection].aggregate(pipeline, maxTimeMS=QUERY_TIMEOUT_MS))
             if not results:
-                unavailable = check_search_indexes(collection, pipeline, fresh=True)
+                unavailable = check_search_indexes(collection, pipeline, max_age=_INDEX_RECHECK_TTL)
                 if unavailable:
                     return None, unavailable
             return results, None
         except ExecutionTimeout:
-            return None, "Operação cancelada — tempo limite de 10s atingido."
+            return None, QUERY_TIMEOUT_MSG
         except (ServerSelectionTimeoutError, WaitQueueTimeoutError):
             logger.warning("atlas unreachable collection=%s", collection)
             return None, ATLAS_UNREACHABLE
@@ -142,15 +144,19 @@ def get_stats() -> tuple[dict, bool]:
 # $search only if the field types support it, and the hybrid tabs go native
 # ($rankFusion) only if produtos_vector also has a lexical search index.
 _INDEX_CACHE_TTL = 60
+# Re-read window for a negative answer or an empty result: short enough to
+# notice an index that just became READY (or was dropped), long enough that a
+# burst of legitimately empty searches does not hit $listSearchIndexes each time.
+_INDEX_RECHECK_TTL = 5
 _index_cache = {}  # collection -> {"ts": float, "indexes": list}
 
-def _index_listing(collection: str, fresh: bool = False) -> list | None:
-    """$listSearchIndexes with a 60 s cache. None = the listing itself failed
-    (cluster down, server without the stage): callers must not read that as
-    "no indexes"."""
+def _index_listing(collection: str, max_age: float = _INDEX_CACHE_TTL) -> list | None:
+    """$listSearchIndexes cached for up to max_age seconds (60 by default).
+    None = the listing itself failed (cluster down, server without the stage):
+    callers must not read that as "no indexes"."""
     now = time.time()
     hit = _index_cache.get(collection)
-    if not fresh and hit and now - hit["ts"] < _INDEX_CACHE_TTL:
+    if hit and now - hit["ts"] < max_age:
         return hit["indexes"] if hit.get("ok", True) else None
     try:
         idx, ok = list(db[collection].aggregate([{"$listSearchIndexes": {}}], maxTimeMS=5000)), True
@@ -204,20 +210,21 @@ def index_unavailable_reason(collection: str, names: list, listing: list) -> str
             "devolve lista vazia sem erro; acompanhe em /stats ou scripts/setup_search_indexes.py --status.")
 
 
-def check_search_indexes(collection: str, pipeline: list, fresh: bool = False) -> str | None:
+def check_search_indexes(collection: str, pipeline: list,
+                         max_age: float = _INDEX_CACHE_TTL) -> str | None:
     """None when every search index the pipeline reads is queryable, or when
     the state is unknown (listing failed: let the query run and report its own
-    error). A negative answer from the cache is re-read once, so an index that
-    just became READY is not blocked for the rest of the TTL."""
+    error). A negative answer older than _INDEX_RECHECK_TTL is re-read once, so
+    an index that just became READY is not blocked for the rest of the TTL."""
     names = search_indexes_used(pipeline)
     if not names:
         return None
-    listing = _index_listing(collection, fresh=fresh)
+    listing = _index_listing(collection, max_age=max_age)
     if listing is None:
         return None
     reason = index_unavailable_reason(collection, names, listing)
-    if reason and not fresh:
-        listing = _index_listing(collection, fresh=True)
+    if reason and max_age > _INDEX_RECHECK_TTL:
+        listing = _index_listing(collection, max_age=_INDEX_RECHECK_TTL)
         reason = index_unavailable_reason(collection, names, listing) if listing is not None else None
     return reason
 
@@ -952,8 +959,13 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "rerank-2.5")
 
 
 def rerank_stages(query: str, num_docs: int) -> list:
-    """$rerank after the fusion (pure). $rerank replaces $meta "score", so the
-    RRF score and its scoreDetails are kept in fields first."""
+    """$rerank after the fusion. $rerank replaces $meta "score", so the RRF
+    score and its scoreDetails are kept in fields first. The query text goes to
+    the Voyage reranker (a third party), so PII is masked first; the masked text
+    is what the MQL trace shows."""
+    from llm_gateway import mask_pii  # lazy: keeps `import atlas` light
+
+    query = mask_pii(query)
     return [
         {"$addFields": {"rrf_score": {"$meta": "score"}, "rrf_details": {"$meta": "scoreDetails"}}},
         {"$rerank": {"query": {"text": query}, "path": "descricao",
@@ -1016,6 +1028,15 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
     t0 = time.time()
     results, err = safe_aggregate("produtos_vector", pipeline)
     elapsed = (time.time() - t0) * 1000
+
+    if err and rerank and err in (ATLAS_UNREACHABLE, QUERY_TIMEOUT_MSG):
+        # Cluster down or the whole aggregation timed out: not the reranker's
+        # fault, and a fallback would only wait again. Report it as is.
+        return {
+            "native": False, "error": err, "reason": err, "fused": [], "counts": {},
+            "elapsed_ms": round(elapsed), "k": 60, "pipeline": pipeline,
+            "rerank": {"requested": True, "applied": False, "model": RERANK_MODEL, "reason": None},
+        }
 
     if err and rerank and not err.startswith(INDEX_UNAVAILABLE):
         # $rerank rejected (server without the stage, reranker throttled):
