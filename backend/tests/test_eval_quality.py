@@ -54,7 +54,7 @@ class TestGolden(unittest.TestCase):
         catalog = rq.catalog_index()
         known = {p for prods in catalog.values() for p in prods}
         self.assertGreaterEqual(len(golden["casos"]), 15)
-        self.assertIn("RASCUNHO", golden["_status"])
+        self.assertRegex(golden["_status"], "RASCUNHO|VALIDADO")
         ids = [c["id"] for c in golden["casos"]]
         self.assertEqual(len(ids), len(set(ids)))
         for case in golden["casos"]:

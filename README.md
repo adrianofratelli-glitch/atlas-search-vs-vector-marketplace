@@ -175,18 +175,18 @@ Native fusion is not faster here; its value is one round trip and fusion logic t
 .venv/bin/python eval/run_quality.py --out /tmp/search_quality.json   # ~40 s, writes JSON, always exits 0
 ```
 
-Measured on the demo db (500K, 2026-11-12, after [ADR-002](docs/adr/0002-rankfusion-desempate-lexical.md)):
+Measured on the demo db (500K, 2026-11-12, after [ADR-002](docs/adr/0002-rankfusion-desempate-lexical.md), validated golden set):
 
 | Mode | recall@5 | MRR |
 |---|---|---|
-| lexical (`$search`) | 0.50 | 0.50 |
-| vector (`$vectorSearch`) | 0.88 | 0.89 |
-| native hybrid (`$rankFusion`) | **0.96** | 0.89-0.90 |
-| application RRF | 0.96 | 0.73 |
+| lexical (`$search`) | 0.46 | 0.46 |
+| vector (`$vectorSearch`) | 0.85 | 0.85 |
+| native hybrid (`$rankFusion`) | **0.92** | 0.87 |
+| application RRF | 0.92 | 0.69 |
 
-Native hybrid now matches or beats each single mode on recall@5, keeps 100% on exact-name and typo queries, and reaches 100% on intent queries (vector 100%, lexical 8%). Before ADR-002 it scored recall@5 0.77 and MRR 0.70: tied lexical scores got the same rank inside `$rankFusion` and pushed the vector hits out of the top 5. MRR varies between runs (0.885 / 0.904) because the first lexical and first vector hits tie at `1/61` and the server breaks that fusion tie. The weekly eval keeps floors for these numbers (`hybrid >= lexical`, `hybrid >= vector`, `application RRF >= each mode`).
+Native hybrid matches or beats each single mode on recall@5 and keeps 100% on exact-name and typo queries. Before ADR-002 it scored recall@5 0.77 and MRR 0.70 (draft golden set): tied lexical scores got the same rank inside `$rankFusion` and pushed the vector hits out of the top 5. MRR varies between runs (0.885 / 0.904) because the first lexical and first vector hits tie at `1/61` and the server breaks that fusion tie. The weekly eval keeps floors for these numbers (`hybrid >= lexical`, `hybrid >= vector`, `application RRF >= each mode`).
 
-The golden set in `eval/golden.json` is a **draft (rascunho) to be validated**: targets come from the synthetic catalog in `scripts/populate_marketplace.py`, judged by product model, not by a human relevance review.
+The golden set in `eval/golden.json` was **reviewed and validated** on 2026-11-12 (targets from the synthetic catalog in `scripts/populate_marketplace.py`, judged by product model; the two intent queries i04 "professional camera" and i05 "muscle-gain supplement" were narrowed to professional cameras and whey/mass gainer). Numbers above use the validated set.
 
 ## License
 
