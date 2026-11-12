@@ -31,9 +31,9 @@ A synthetic catalog with near-identical text across products in the same subcate
 
 ![$scoreFusion with a differentiated real score per product, no collapse to zero](docs/screenshots/hybrid-scorefusion.png)
 
-Some residual ties remain: with finite templates there is always **some** group of documents with identical text for a fixed query. That is a property of BM25 over a finite vocabulary, not a bug. The UI shows it honestly instead of hiding it:
+Ties in the lexical score are still real: the catalog has dozens of units of the same model (one per color) with the same text score, and `$rankFusion` gives tied scores the same rank. Before [ADR-002](docs/adr/0002-rankfusion-desempate-lexical.md) the whole lexical top N came out with `rank_search = 1` and crowded the vector hits out of the top (screenshot below). The lexical sub-pipeline now sorts its `$search` by score and breaks ties by `produto_id`, so ranks are positional (1..N) again; if the index cannot sort by `produto_id`, the tab says so in a banner.
 
-![$rankFusion showing a tied rank_search when the query lands in the residual group: correct server behavior on this data](docs/screenshots/hybrid-rankfusion-residual.png)
+![Before ADR-002: $rankFusion with a tied rank_search for the whole lexical group](docs/screenshots/hybrid-rankfusion-residual.png)
 
 **4. Similar products**: vector "more like this" from a product's description, with category and stock filters running *inside* `$vectorSearch`, not after it.
 
@@ -166,6 +166,27 @@ Component details: [`frontend/README.md`](frontend/README.md) · [`backend/READM
 | Hybrid on the demo db (2026-10-06): two queries in parallel + RRF in the app | p50 402 ms, p95 475 ms |
 
 Native fusion is not faster here; its value is one round trip and fusion logic that lives in the database, not in every client. The latency of each engine is shown on every screen. Freshness varies run to run with the index refresh; the earlier run on 2026-10-06 measured 4.0 s lexical and 17.2 s vector for the direct insert.
+
+## Quality evaluation (avaliação de qualidade)
+
+`eval/run_quality.py` measures the thesis on relevance, not latency: 26 queries with a known target product from the seed catalog (exact model name, typo, natural-language intent, brand + intent) run through the backend's own functions (`compare_search_vector`, `hybrid_native`) on the same corpus, and each mode (lexical, vector, native `$rankFusion` hybrid, application RRF) is scored by recall@5 and MRR over the top 10. Read-only on the database in `DB_NAME`; one Voyage query embedding per vector leg; no LLM.
+
+```bash
+.venv/bin/python eval/run_quality.py --out /tmp/search_quality.json   # ~40 s, writes JSON, always exits 0
+```
+
+Measured on the demo db (500K, 2026-11-12, after [ADR-002](docs/adr/0002-rankfusion-desempate-lexical.md)):
+
+| Mode | recall@5 | MRR |
+|---|---|---|
+| lexical (`$search`) | 0.50 | 0.50 |
+| vector (`$vectorSearch`) | 0.88 | 0.89 |
+| native hybrid (`$rankFusion`) | **0.96** | 0.89-0.90 |
+| application RRF | 0.96 | 0.73 |
+
+Native hybrid now matches or beats each single mode on recall@5, keeps 100% on exact-name and typo queries, and reaches 100% on intent queries (vector 100%, lexical 8%). Before ADR-002 it scored recall@5 0.77 and MRR 0.70: tied lexical scores got the same rank inside `$rankFusion` and pushed the vector hits out of the top 5. MRR varies between runs (0.885 / 0.904) because the first lexical and first vector hits tie at `1/61` and the server breaks that fusion tie. The weekly eval keeps floors for these numbers (`hybrid >= lexical`, `hybrid >= vector`, `application RRF >= each mode`).
+
+The golden set in `eval/golden.json` is a **draft (rascunho) to be validated**: targets come from the synthetic catalog in `scripts/populate_marketplace.py`, judged by product model, not by a human relevance review.
 
 ## License
 

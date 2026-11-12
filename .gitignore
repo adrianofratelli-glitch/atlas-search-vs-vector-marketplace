@@ -31,3 +31,6 @@ frontend/dist/
 frontend/node_modules/
 **/.vite/
 frontend/.env
+
+# Quality eval output (eval/run_quality.py)
+eval/reports/

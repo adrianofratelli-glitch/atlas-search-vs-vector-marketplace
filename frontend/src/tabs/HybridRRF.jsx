@@ -138,7 +138,7 @@ export default function HybridRRF() {
       {data && data.native === false && (
         <Banner variant="warning" darkMode style={{ marginBottom: 12 }}>{data.reason}</Banner>
       )}
-      {engine === "score" && data?.native === true && data?.degraded_reason && (
+      {data?.native === true && data?.degraded_reason && (
         <Banner variant="warning" darkMode style={{ marginBottom: 12 }}>{data.degraded_reason}</Banner>
       )}
 

@@ -1,6 +1,6 @@
 # ADR-001: $rankFusion (RRF) como modo padrão da busca híbrida; $scoreFusion (RSF) exposto como modo didático
 
-**Status:** Aceito — atualizado com causa raiz corrigida (2026-09-08)
+**Status:** Aceito — atualizado com causa raiz corrigida (2026-09-08); a seção "Limitação residual" foi substituída pelo [ADR-002](0002-rankfusion-desempate-lexical.md) (2026-11-12)
 **Data:** 2026-09-07 (revisão 2026-09-08)
 **Contexto do cliente/conta:** POC interna — atlas-search-vs-vector-marketplace
 
@@ -31,7 +31,9 @@ A versão original deste ADR (2026-09-07) atribuiu o colapso de score do `$score
 | `$rankFusion` — `rank_vector` | sempre `NA` (embeddings idênticos, nenhum doc emergia) | rank real aparece (embedding único por doc via voyage-4) |
 | `$rankFusion` — `rank_search` | sempre `1` para toda a subcategoria (~15-20k docs) | ainda `1` para o subconjunto que compartilha o mesmo combo de template+diferencial (~1/12 da subcategoria) — ver limitação abaixo |
 
-### Limitação residual (esperada, não é bug)
+### Limitação residual (substituída pelo ADR-002)
+> **2026-11-12:** a leitura abaixo estava incompleta. O empate do score lexical é real (unidades do mesmo modelo, uma por cor), mas o que derrubava o `$rankFusion` era o sub-pipeline `textual` sem ordem total: o estágio dá o mesmo rank a scores empatados. O [ADR-002](0002-rankfusion-desempate-lexical.md) adiciona `sort` por score e `produto_id` ao `$search` e o rank volta a ser posicional (recall@5 do híbrido nativo 0,769 → 0,962). O texto original fica como histórico.
+
 Com templates finitos, sempre existirá **algum** grupo de documentos empatado no topo para uma query fixa — é propriedade do BM25 sobre vocabulário finito, não uma falha de implementação. O fix reduziu o tamanho do grupo empatado em ~12x (2 templates × 6 diferenciais), não a zero. Zerar completamente exigiria texto 100% único por SKU, o que nenhum gerador sintético de catálogo faz de forma econômica (nem a maioria dos catálogos reais). `docs/screenshots/hybrid-rankfusion-residual.png` documenta esse estado honestamente — a UI continua mostrando `rank_search` empatado quando a query cai nesse cenário, em vez de esconder o comportamento.
 
 ## Alternativas consideradas
@@ -55,4 +57,4 @@ Reproduzido diretamente via agregação (fora da aplicação, consultando o clus
 
 ## Riscos e mitigação
 - **Risco:** a heurística de detecção de degradação (`fused and all(x["score"] == 0)`) ainda existe no código para o caso legítimo de um grupo de documentos inteiramente tied — mantida por segurança, mas hoje dispara com muito menos frequência.
-- **Mitigação:** se o residual de empate lexical incomodar em demos futuras, o próximo passo é aumentar `DESC_DIFERENCIAIS`/variantes de `DESC_TEMPLATES` para mais subcategorias (hoje só "Tênis Esportivos" tem pool de vocabulário específico de domínio; as outras 30 usam o pool genérico).
+- **Mitigação (superada pelo ADR-002, que desempata no `$search`):** se o residual de empate lexical incomodar em demos futuras, o próximo passo é aumentar `DESC_DIFERENCIAIS`/variantes de `DESC_TEMPLATES` para mais subcategorias (hoje só "Tênis Esportivos" tem pool de vocabulário específico de domínio; as outras 30 usam o pool genérico).

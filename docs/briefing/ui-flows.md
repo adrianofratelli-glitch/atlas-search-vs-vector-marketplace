@@ -48,6 +48,7 @@ O backend sempre informa qual caminho executou; a interface é obrigada a mostra
 - se a busca híbrida usou `$rankFusion`/`$scoreFusion` nativos ou caiu no RRF calculado na aplicação, e o motivo (`native: false`, `reason`);
 - se a busca com sinônimos caiu no fallback sem sinônimo (`synonyms_fallback`);
 - se o `$scoreFusion` sofreu o colapso de normalização conhecido (`degraded_reason` — ver `queries.md` seção 9 e o ADR `docs/adr/0001-rankfusion-vs-scorefusion.md`).
+- se o `$rankFusion` rodou sem o desempate do lexical porque o índice não declara `produto_id` como `token` (`degraded_reason` em banner — ver `queries.md` seção 8 e `docs/adr/0002-rankfusion-desempate-lexical.md`).
 
 Um badge visível custa pouco espaço de tela e compra credibilidade; esconder um fallback é o tipo de coisa que, descoberta na pergunta seguinte do cliente, custa a reunião inteira.
 
@@ -66,7 +67,7 @@ Toda mensagem de erro passa por `describeError` (`frontend/src/api.js`), que diz
 | `atlas-search.png` | aba Full-text |
 | `search-vs-vector.png` | aba Search × Vector |
 | `hybrid-rrf.png` | aba Híbrida, modo RRF |
-| `hybrid-rankfusion-residual.png` | aba Híbrida, `$rankFusion` com empate residual (ver ADR-001) |
+| `hybrid-rankfusion-residual.png` | aba Híbrida, `$rankFusion` com `rank_search` empatado, antes do desempate do ADR-002 (registro histórico) |
 | `hybrid-scorefusion.png` | aba Híbrida, modo `$scoreFusion` |
 | `similares.png` | aba Similares |
 | `analytics.png` | aba Analytics |

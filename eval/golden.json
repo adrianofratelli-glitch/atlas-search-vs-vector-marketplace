@@ -1,0 +1,32 @@
+{
+  "_status": "RASCUNHO — validar com o usuário. Gabarito derivado do catálogo sintético de scripts/populate_marketplace.py (CATALOGO + DESC_TEMPLATES); sem dado de cliente.",
+  "_formato": "Cada caso tem 'consulta' e o alvo: 'alvo' (lista de 'marca modelo', exatamente como em CATALOGO) e/ou 'subcategorias' (todas as 'marca modelo' da subcategoria contam). Um resultado é relevante se o nome do produto, sem o sufixo ' — cor', estiver no alvo. 'tipo' agrupa as métricas: nome (modelo exato), digitacao (erro de digitação), intencao (linguagem natural, sem o nome do produto), misto (marca + intenção).",
+  "casos": [
+    {"id": "n01", "tipo": "nome", "consulta": "WH-1000XM5", "alvo": ["Sony WH-1000XM5"]},
+    {"id": "n02", "tipo": "nome", "consulta": "Gel-Kayano 30", "alvo": ["ASICS Gel-Kayano 30"]},
+    {"id": "n03", "tipo": "nome", "consulta": "Galaxy S24 Ultra", "alvo": ["Samsung Galaxy S24 Ultra"]},
+    {"id": "n04", "tipo": "nome", "consulta": "ThinkPad X1 Carbon", "alvo": ["Lenovo ThinkPad X1 Carbon"]},
+    {"id": "n05", "tipo": "nome", "consulta": "Hero 12 Black", "alvo": ["GoPro Hero 12 Black"]},
+    {"id": "n06", "tipo": "nome", "consulta": "creatina 300g", "alvo": ["Integral Medica Creatina Monohydrate 300g", "Growth Supp. Creatina 300g"]},
+    {"id": "n07", "tipo": "nome", "consulta": "Steam Deck OLED", "alvo": ["Valve Steam Deck OLED 1TB"]},
+    {"id": "n08", "tipo": "nome", "consulta": "G-Shock GA-2100", "alvo": ["Casio G-Shock GA-2100"]},
+    {"id": "d01", "tipo": "digitacao", "consulta": "macbok air", "alvo": ["Apple MacBook Air M3"]},
+    {"id": "d02", "tipo": "digitacao", "consulta": "ultrabost", "alvo": ["Adidas Ultraboost 23"]},
+    {"id": "d03", "tipo": "digitacao", "consulta": "kettlebel 16kg", "alvo": ["Acte Kettlebell 16kg"]},
+    {"id": "d04", "tipo": "digitacao", "consulta": "playstaton 5", "alvo": ["Sony PlayStation 5 825GB"]},
+    {"id": "i01", "tipo": "intencao", "consulta": "fone com cancelamento de ruído para viagem de avião", "subcategorias": ["Fones de Ouvido"]},
+    {"id": "i02", "tipo": "intencao", "consulta": "fritar batata sem óleo", "alvo": ["Tramontina Air Fryer Digital 4L", "Philips Airfryer XXL 7.3L"]},
+    {"id": "i03", "tipo": "intencao", "consulta": "relógio para acompanhar treino de corrida e batimentos", "subcategorias": ["Smartwatches"]},
+    {"id": "i04", "tipo": "intencao", "consulta": "câmera para fotografar casamento profissionalmente", "subcategorias": ["Câmeras"]},
+    {"id": "i05", "tipo": "intencao", "consulta": "proteína para ganhar massa muscular depois do treino", "subcategorias": ["Suplementos"]},
+    {"id": "i06", "tipo": "intencao", "consulta": "bicicleta para trilha na montanha", "alvo": ["Caloi Mountain Bike Elite Carbon 29\"", "Oggi Big Wheel 7.4 29\"", "Specialized Rockhopper Comp 29\"", "Trek Marlin 6 Gen 3", "Scott Scale 965 29\"", "Sense Activ 29\" 2024"]},
+    {"id": "i07", "tipo": "intencao", "consulta": "computador leve para trabalhar viajando", "subcategorias": ["Notebooks"]},
+    {"id": "i08", "tipo": "intencao", "consulta": "comida para gato castrado", "subcategorias": ["Ração para Gatos"]},
+    {"id": "i09", "tipo": "intencao", "consulta": "medir pressão arterial em casa", "alvo": ["Omron Monitor de Pressão de Pulso"]},
+    {"id": "i10", "tipo": "intencao", "consulta": "livro para criar bons hábitos e ser mais produtivo", "subcategorias": ["Livros de Negócios"]},
+    {"id": "i11", "tipo": "intencao", "consulta": "treinar em casa sem ir à academia", "subcategorias": ["Equipamentos de Musculação"]},
+    {"id": "i12", "tipo": "intencao", "consulta": "máquina de café em cápsula", "alvo": ["Nespresso Vertuo Next", "Nespresso Essenza Mini"]},
+    {"id": "m01", "tipo": "misto", "consulta": "tênis Nike para correr maratona", "alvo": ["Nike Air Zoom Pegasus 41", "Nike React Infinity Run 4"]},
+    {"id": "m02", "tipo": "misto", "consulta": "TV Samsung para assistir filmes na sala", "alvo": ["Samsung Neo QLED 8K 65\"", "Samsung QLED 55\""]}
+  ]
+}

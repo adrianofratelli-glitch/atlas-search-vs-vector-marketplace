@@ -826,6 +826,31 @@ def _parse_rank_fusion_details(doc: dict) -> dict:
     return out
 
 
+# $rankFusion ranks each input pipeline by its score with shared ranks for
+# ties (competition ranking: 1, 1, 1, ..., 103). The catalog has dozens of
+# units per model (one per color) with the SAME BM25 score, so without a
+# tie-breaker the whole lexical top N came out with rank_search=1 — each worth
+# 1/61, the same as the vector rank 1 — and the final $limit crowded the vector
+# results out (ADR-002). Sorting the $search by score and then by a unique,
+# sortable field (produto_id is indexed as token) gives positional ranks 1..N,
+# the same RRF the application computes. Order of relevance is unchanged.
+RANK_FUSION_LEXICAL_SORT = {"score": {"$meta": "searchScore", "order": -1}, "produto_id": 1}
+RANK_FUSION_TIES_REASON = (
+    "O índice lexical de produtos_vector não declara produto_id como token, então o "
+    "$search não pode desempatar o score. Documentos com o mesmo score saem todos com "
+    "rank_search=1 e podem empurrar os resultados vetoriais para fora do topo. Recrie "
+    "produtos_vector_search com produto_id: token (scripts/populate_marketplace.py).")
+
+
+def rank_fusion_tiebreak_supported(search_index: str) -> bool:
+    """True when the lexical index on produtos_vector can sort by produto_id
+    (token mapping) — the precondition for RANK_FUSION_LEXICAL_SORT."""
+    for ix in get_search_indexes("produtos_vector"):
+        if ix.get("name") == search_index:
+            return "token" in _field_types(ix, "produto_id")
+    return False
+
+
 def hybrid_native(query: str, limit: int = 20) -> dict:
     """Hybrid search with the NATIVE $rankFusion stage — the fusion happens
     server-side, in one aggregation, with no application code. Requirements:
@@ -845,6 +870,8 @@ def hybrid_native(query: str, limit: int = 20) -> dict:
             "elapsed_ms": fb.get("elapsed_ms", 0), "k": 60, "pipeline": None,
         }
 
+    tiebreak = rank_fusion_tiebreak_supported(search_index)
+    lexical_sort = {"sort": RANK_FUSION_LEXICAL_SORT} if tiebreak else {}
     pipeline = [
         {"$rankFusion": {
             "input": {"pipelines": {
@@ -852,7 +879,7 @@ def hybrid_native(query: str, limit: int = 20) -> dict:
                     {"$search": {"index": search_index, "compound": {"should": [
                         {"autocomplete": {"query": query, "path": "nome", "fuzzy": {"maxEdits": 1}}},
                         {"text": {"query": query, "path": "descricao", "fuzzy": {"maxEdits": 1}}},
-                    ]}}},
+                    ]}, **lexical_sort}},
                     {"$limit": limit},
                 ],
                 "semantico": [
@@ -899,6 +926,8 @@ def hybrid_native(query: str, limit: int = 20) -> dict:
 
     return {
         "native": True,
+        # Still native, but without the tie-breaker the lexical ranks can tie.
+        "degraded_reason": None if tiebreak else RANK_FUSION_TIES_REASON,
         "fused": fused,
         "counts": {"only_search": only_s, "only_vector": only_v, "both": both,
                    "n_search": limit, "n_vector": limit},

@@ -101,6 +101,8 @@ A busca lexical não usa só o score textual do BM25/Lucene: multiplica a relev�
 
 `docs/adr/0001-rankfusion-vs-scorefusion.md` documenta por que `$rankFusion` (RRF nativo) é o modo padrão da aba híbrida, e `$scoreFusion` (RSF) fica exposto como modo didático com um bug observado: a normalização `minMaxScaler` pode colapsar o score combinado de todos os resultados para `0` mesmo com score bruto não-zero em algum sub-pipeline. Isso é detectado (`hybrid_score_fusion`, `backend/atlas.py`) e reportado via `degraded_reason` — a causa raiz não era o cluster, era texto quase idêntico entre produtos gerados sinteticamente (empatando o score lexical em massa); corrigido em `scripts/populate_marketplace.py` adicionando um segundo eixo de variação textual (`DESC_DIFERENCIAIS`).
 
+`docs/adr/0002-rankfusion-desempate-lexical.md` corrige o `$rankFusion`: o estágio dá o mesmo rank a scores lexicais empatados (unidades do mesmo modelo, uma por cor), o que empurrava os resultados vetoriais para fora do topo. O `$search` do sub-pipeline `textual` agora ordena por `searchScore` e desempata por `produto_id`; sem `produto_id` como `token` no índice, roda sem desempate e devolve `degraded_reason`.
+
 ### 5. Inicialização preguiçosa do agente
 
 O agente LangGraph e seu checkpointer MongoDB (`MongoDBSaver`) só são construídos na primeira requisição a `/agent` (`_get_agent()`, `backend/agent.py`, decorado com `@lru_cache`). Isso mantém os imports de módulo livres de efeito colateral — testes unitários, lint e endpoints que não usam o agente não exigem cluster Atlas alcançável.

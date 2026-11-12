@@ -77,7 +77,7 @@ Detalhe e exemplos em [briefing/queries.md](briefing/queries.md). Linhas de `bac
 | Facetas | `search_facets` (618; `$searchMeta` em 620) | `$searchMeta` com facet de categoria e faixas de preço | `produtos` |
 | Comparação lexical x vetorial | `compare_search_vector` (669; `$search` em 687, `$vectorSearch` em 691) | `$search` (`phrase` ou `compound`) e `$vectorSearch` com `query` em texto (autoEmbed), `numCandidates` por `_num_candidates` (286) | `produtos`/`produtos_vector` |
 | Híbrida ajustável (API-only) | `hybrid_rrf` (735; `$search` em 742, `$vectorSearch` em 752) | dois aggregates + `_rrf_fuse` (643) em Python | `produtos_vector` |
-| Híbrida nativa por ranks | `hybrid_native` (829; `$rankFusion` em 849) | `$rankFusion` com `$search` e `$vectorSearch` | `produtos_vector` |
+| Híbrida nativa por ranks | `hybrid_native` (854; `$rankFusion` em 876; desempate lexical `RANK_FUSION_LEXICAL_SORT` em 837) | `$rankFusion` com `$search` e `$vectorSearch` | `produtos_vector` |
 | Híbrida nativa por scores | `hybrid_score_fusion` (940; `$scoreFusion` em 959) | `$scoreFusion` (Relative Score Fusion) | `produtos_vector` |
 | Produtos similares | `find_similar` (301; base em 325/331, `$vectorSearch` em 347, execução em 364) | `$match` ou `$search` para o produto-base; `$vectorSearch` com `filter` (categoria, `em_estoque`) | `produtos_vector` (base em `produtos` se não houver índice textual lá) |
 | Analytics | `get_analytics` (209; aggregate em 255) | `$sample` (modo amostra) + `$facet` com `$group`, `$bucket`, `$dateToString`, `allowDiskUse` | `produtos` |
@@ -117,7 +117,7 @@ Detalhe e exemplos em [briefing/queries.md](briefing/queries.md). Linhas de `bac
 - Texto de uma tela -> `frontend/src/tabs/<Aba>.jsx` (títulos e chips de exemplo ficam no próprio arquivo); nomes das abas em `frontend/src/App.jsx` (`TAB_LABELS`, `NAV_GROUPS`).
 - Mudar o que a busca full-text pesa (nome x descrição, boost de nota) -> `backend/atlas.py::build_search_op` (496) e `_business_score` (487).
 - Mudar filtros da busca (preço, categoria, estoque) -> `backend/atlas.py::build_filters` (513) e os campos de `SearchReq` em `backend/main.py` (127).
-- Mudar a híbrida (pesos, candidatos, motor) -> `atlas.py::hybrid_native` (829) / `hybrid_score_fusion` (940); critério em `docs/adr/0001-rankfusion-vs-scorefusion.md`.
+- Mudar a híbrida (pesos, candidatos, motor) -> `atlas.py::hybrid_native` (854) / `hybrid_score_fusion` (969); critério em `docs/adr/0001-rankfusion-vs-scorefusion.md` e `docs/adr/0002-rankfusion-desempate-lexical.md`.
 - Mudar `numCandidates` da busca vetorial -> `atlas.py::_num_candidates` (286) e os `limit` em cada pipeline.
 - Adicionar uma rota -> `backend/main.py` (modelo Pydantic + `@app.get/post`), lógica em `atlas.py` e função em `frontend/src/api.js`.
 - Prompt do agente -> `backend/agent.py` (`SYSTEM_PROMPT`, linha 201); adicionar uma tool: criar o `_pipe_*`, a função `@tool`, registrar em `PIPELINE_BUILDERS` (99), `TOOL_META` (166) e na lista de `create_react_agent` (`_get_agent`).
