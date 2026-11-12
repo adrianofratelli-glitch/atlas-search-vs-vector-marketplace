@@ -144,6 +144,11 @@ class CompareReq(BaseModel):
     query: Query
     mode: str = Field("phrase", pattern="^(phrase|compound)$")
 
+class HybridNativeReq(BaseModel):
+    query: Query
+    # Opt-in $rerank after $rankFusion (ADR-003): one Voyage rerank call per query.
+    rerank: bool = False
+
 class HybridReq(BaseModel):
     query: Query
     # Bounded to a practically meaningful RRF range: k<10 is dominated almost
@@ -242,9 +247,10 @@ def hybrid(req: HybridReq):
     return atlas.hybrid_rrf(req.query, k=req.k, n_search=req.n_search, n_vector=req.n_vector)
 
 @app.post("/hybrid-native")
-def hybrid_native(req: CompareReq):
-    """Hybrid search using the NATIVE $rankFusion stage (8.1+), with an RRF fallback on 8.0."""
-    return atlas.hybrid_native(req.query)
+def hybrid_native(req: HybridNativeReq):
+    """Hybrid search using the NATIVE $rankFusion stage (8.1+), with an RRF fallback on 8.0.
+    rerank=true appends $rerank (Voyage, run by Atlas) and reports whether it applied."""
+    return atlas.hybrid_native(req.query, rerank=req.rerank)
 
 @app.post("/hybrid-score-fusion")
 def hybrid_score_fusion(req: CompareReq):

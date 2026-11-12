@@ -61,9 +61,21 @@ def safe_aggregate(collection: str, pipeline: list):
     debugs a timeout spike later — check Atlas metrics for autoEmbed latency
     before assuming a cluster-side regression.
     """
+    # A missing or not-yet-queryable search index does NOT raise: $search,
+    # $searchMeta and $vectorSearch just return nothing (measured on Atlas
+    # 9.0.7), and inside $rankFusion the other leg silently fills the page.
+    # Check $listSearchIndexes first, and re-check on an empty answer.
+    unavailable = check_search_indexes(collection, pipeline)
+    if unavailable:
+        return None, unavailable
     for attempt in range(APP_RETRIES + 1):
         try:
-            return list(db[collection].aggregate(pipeline, maxTimeMS=QUERY_TIMEOUT_MS)), None
+            results = list(db[collection].aggregate(pipeline, maxTimeMS=QUERY_TIMEOUT_MS))
+            if not results:
+                unavailable = check_search_indexes(collection, pipeline, fresh=True)
+                if unavailable:
+                    return None, unavailable
+            return results, None
         except ExecutionTimeout:
             return None, "Operação cancelada — tempo limite de 10s atingido."
         except (ServerSelectionTimeoutError, WaitQueueTimeoutError):
@@ -132,18 +144,82 @@ def get_stats() -> tuple[dict, bool]:
 _INDEX_CACHE_TTL = 60
 _index_cache = {}  # collection -> {"ts": float, "indexes": list}
 
-def get_search_indexes(collection: str) -> list:
+def _index_listing(collection: str, fresh: bool = False) -> list | None:
+    """$listSearchIndexes with a 60 s cache. None = the listing itself failed
+    (cluster down, server without the stage): callers must not read that as
+    "no indexes"."""
     now = time.time()
     hit = _index_cache.get(collection)
-    if hit and now - hit["ts"] < _INDEX_CACHE_TTL:
-        return hit["indexes"]
+    if not fresh and hit and now - hit["ts"] < _INDEX_CACHE_TTL:
+        return hit["indexes"] if hit.get("ok", True) else None
     try:
-        idx = list(db[collection].aggregate([{"$listSearchIndexes": {}}], maxTimeMS=5000))
+        idx, ok = list(db[collection].aggregate([{"$listSearchIndexes": {}}], maxTimeMS=5000)), True
     except Exception:
         logger.exception("listSearchIndexes failed collection=%s", collection)
-        idx = []
-    _index_cache[collection] = {"ts": now, "indexes": idx}
-    return idx
+        idx, ok = [], False
+    _index_cache[collection] = {"ts": now, "indexes": idx, "ok": ok}
+    return idx if ok else None
+
+
+def get_search_indexes(collection: str) -> list:
+    return _index_listing(collection) or []
+
+
+# Stages that read a search index. Their index name defaults to "default".
+_SEARCH_STAGES = ("$search", "$searchMeta", "$vectorSearch")
+INDEX_UNAVAILABLE = "Índice de busca indisponível"
+
+
+def search_indexes_used(pipeline: list) -> list:
+    """Names of the search indexes a pipeline reads, including the
+    sub-pipelines of $rankFusion / $scoreFusion (pure; no I/O)."""
+    names = []
+    for stage in pipeline or []:
+        if not isinstance(stage, dict):
+            continue
+        for op, spec in stage.items():
+            if not isinstance(spec, dict):
+                continue
+            if op in _SEARCH_STAGES:
+                names.append(spec.get("index") or "default")
+            elif op in ("$rankFusion", "$scoreFusion"):
+                for sub in ((spec.get("input") or {}).get("pipelines") or {}).values():
+                    names.extend(search_indexes_used(sub))
+    return list(dict.fromkeys(names))
+
+
+def index_unavailable_reason(collection: str, names: list, listing: list) -> str | None:
+    """Readable reason when any named index is absent or not queryable (pure)."""
+    by_name = {ix.get("name"): ix for ix in listing}
+    problems = []
+    for name in names:
+        ix = by_name.get(name)
+        if ix is None:
+            problems.append(f"{name} não existe em {collection}")
+        elif not ix.get("queryable"):
+            problems.append(f"{name} está {ix.get('status', 'UNKNOWN')} e ainda não é consultável")
+    if not problems:
+        return None
+    return (f"{INDEX_UNAVAILABLE}: " + "; ".join(problems) + ". Sem índice pronto o Atlas "
+            "devolve lista vazia sem erro; acompanhe em /stats ou scripts/setup_search_indexes.py --status.")
+
+
+def check_search_indexes(collection: str, pipeline: list, fresh: bool = False) -> str | None:
+    """None when every search index the pipeline reads is queryable, or when
+    the state is unknown (listing failed: let the query run and report its own
+    error). A negative answer from the cache is re-read once, so an index that
+    just became READY is not blocked for the rest of the TTL."""
+    names = search_indexes_used(pipeline)
+    if not names:
+        return None
+    listing = _index_listing(collection, fresh=fresh)
+    if listing is None:
+        return None
+    reason = index_unavailable_reason(collection, names, listing)
+    if reason and not fresh:
+        listing = _index_listing(collection, fresh=True)
+        reason = index_unavailable_reason(collection, names, listing) if listing is not None else None
+    return reason
 
 
 def invalidate_index_cache(collection: str | None = None) -> None:
@@ -796,6 +872,24 @@ def hybrid_rrf(query: str, k=60, n_search=20, n_vector=20) -> dict:
     }
 
 
+def _fusion_fallback_reason(stage: str, err: str | None = None) -> str:
+    """Why the native fusion stage did not run — names the real cause: a
+    lexical index on produtos_vector that is still building, an index that is
+    not queryable, or a stage the cluster rejected."""
+    if err and err.startswith(INDEX_UNAVAILABLE):
+        return f"{err} Tentando o RRF na aplicação."
+    if err:
+        return f"{stage} indisponível neste cluster ({err[:120]}) — usando RRF na aplicação."
+    pending = [ix for ix in get_search_indexes("produtos_vector") if ix.get("type") != "vectorSearch"]
+    if pending:
+        ix = pending[0]
+        return (f"{stage} aguarda o índice lexical {ix.get('name')} em produtos_vector "
+                f"({ix.get('status', 'UNKNOWN')}, ainda não consultável). Exibindo RRF calculado na aplicação.")
+    return (f"{stage} exige os dois índices na MESMA coleção — crie um "
+            "índice Atlas Search em produtos_vector (veja scripts/populate_marketplace.py). "
+            "Exibindo RRF calculado na aplicação.")
+
+
 # ── Hybrid via NATIVE $rankFusion — with graceful fallback ───────────────────
 def _parse_rank_fusion_details(doc: dict) -> dict:
     """Extract per-pipeline ranks from $rankFusion scoreDetails (defensively —
@@ -851,23 +945,42 @@ def rank_fusion_tiebreak_supported(search_index: str) -> bool:
     return False
 
 
-def hybrid_native(query: str, limit: int = 20) -> dict:
+# Optional cascade: $rankFusion -> $rerank (Voyage reranker run by Atlas).
+# Measured on the 26-query golden set (ADR-003): recall@5 0.92 -> 0.96,
+# MRR 0.85 -> 0.96, p50 664 -> 913 ms. Opt-in: one Voyage rerank call per query.
+RERANK_MODEL = os.getenv("RERANK_MODEL", "rerank-2.5")
+
+
+def rerank_stages(query: str, num_docs: int) -> list:
+    """$rerank after the fusion (pure). $rerank replaces $meta "score", so the
+    RRF score and its scoreDetails are kept in fields first."""
+    return [
+        {"$addFields": {"rrf_score": {"$meta": "score"}, "rrf_details": {"$meta": "scoreDetails"}}},
+        {"$rerank": {"query": {"text": query}, "path": "descricao",
+                     "numDocsToRerank": max(1, min(num_docs, 1000)), "model": RERANK_MODEL}},
+    ]
+
+
+def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
     """Hybrid search with the NATIVE $rankFusion stage — the fusion happens
     server-side, in one aggregation, with no application code. Requirements:
       • MongoDB 8.1+ ($rankFusion stage)
       • BOTH indexes on the SAME collection (sub-pipelines share the target
         collection) — i.e. a lexical search index on produtos_vector.
-    Anything missing → falls back to the application RRF and says why."""
+    Anything missing → falls back to the application RRF and says why.
+    rerank=True appends $rerank over the fused candidates (up to 2*limit);
+    if the cluster rejects it, the plain $rankFusion answer comes back with
+    rerank.applied=False and the reason."""
     search_index = vector_collection_search_index()
     if not search_index:
         fb = hybrid_rrf(query, k=60, n_search=limit, n_vector=limit)
         return {
             "native": False,
-            "reason": ("$rankFusion exige os dois índices na MESMA coleção — crie um "
-                       "índice Atlas Search em produtos_vector (veja scripts/populate_marketplace.py). "
-                       "Exibindo RRF calculado na aplicação."),
+            "reason": _fusion_fallback_reason("$rankFusion"), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
             "elapsed_ms": fb.get("elapsed_ms", 0), "k": 60, "pipeline": None,
+            "rerank": {"requested": rerank, "applied": False, "model": None,
+                       "reason": "sem $rankFusion nativo, o $rerank não roda" if rerank else None},
         }
 
     tiebreak = rank_fusion_tiebreak_supported(search_index)
@@ -890,31 +1003,48 @@ def hybrid_native(query: str, limit: int = 20) -> dict:
             "combination": {"weights": {"textual": 1, "semantico": 1}},
             "scoreDetails": True,
         }},
+    ]
+    if rerank:
+        pipeline += rerank_stages(query, 2 * limit)
+        project = {"rrf_score": 1, "rerank_score": {"$meta": "score"}, "scoreDetails": "$rrf_details"}
+    else:
+        project = {"score": {"$meta": "score"}, "scoreDetails": {"$meta": "scoreDetails"}}
+    pipeline += [
         {"$limit": limit},
-        {"$project": {"_id": 0, "produto_id": 1, "nome": 1, "categoria": 1, "preco": 1,
-                      "score": {"$meta": "score"},
-                      "scoreDetails": {"$meta": "scoreDetails"}}},
+        {"$project": {"_id": 0, "produto_id": 1, "nome": 1, "categoria": 1, "preco": 1, **project}},
     ]
     t0 = time.time()
     results, err = safe_aggregate("produtos_vector", pipeline)
     elapsed = (time.time() - t0) * 1000
+
+    if err and rerank and not err.startswith(INDEX_UNAVAILABLE):
+        # $rerank rejected (server without the stage, reranker throttled):
+        # answer with the plain fusion and say so.
+        plain = hybrid_native(query, limit=limit, rerank=False)
+        plain["rerank"] = {"requested": True, "applied": False, "model": RERANK_MODEL,
+                           "reason": f"$rerank indisponível ({err[:120]}); exibindo só o $rankFusion."}
+        return plain
 
     if err:
         # e.g. MongoDB 8.0 → no $rankFusion stage
         fb = hybrid_rrf(query, k=60, n_search=limit, n_vector=limit)
         return {
             "native": False,
-            "reason": f"$rankFusion indisponível neste cluster ({err[:120]}) — usando RRF na aplicação.",
+            "reason": _fusion_fallback_reason("$rankFusion", err), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
             "elapsed_ms": fb.get("elapsed_ms", 0), "k": 60, "pipeline": pipeline,
+            "rerank": {"requested": rerank, "applied": False, "model": None,
+                       "reason": "sem $rankFusion nativo, o $rerank não roda" if rerank else None},
         }
 
     fused = []
     for doc in results or []:
         ranks = _parse_rank_fusion_details(doc)
+        rrf = doc.get("rrf_score") if rerank else doc.get("score")
         fused.append({
             "nome": doc.get("nome"), "categoria": doc.get("categoria"),
-            "preco": doc.get("preco"), "rrf": round(doc.get("score", 0), 5),
+            "preco": doc.get("preco"), "rrf": round(rrf or 0, 5),
+            **({"rerank_score": round(doc.get("rerank_score") or 0, 5)} if rerank else {}),
             "rank_search": ranks["rank_search"], "rank_vector": ranks["rank_vector"],
             "both": bool(ranks["rank_search"] and ranks["rank_vector"]),
             "s_score": round(1 / (60 + ranks["rank_search"]), 5) if ranks["rank_search"] else 0,
@@ -932,6 +1062,8 @@ def hybrid_native(query: str, limit: int = 20) -> dict:
         "counts": {"only_search": only_s, "only_vector": only_v, "both": both,
                    "n_search": limit, "n_vector": limit},
         "elapsed_ms": round(elapsed), "k": 60, "pipeline": pipeline,
+        "rerank": {"requested": rerank, "applied": rerank, "model": RERANK_MODEL if rerank else None,
+                   "reason": None},
     }
 
 
@@ -977,9 +1109,7 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
         fb = hybrid_rrf(query, k=60, n_search=limit, n_vector=limit)
         return {
             "native": False,
-            "reason": ("$scoreFusion exige os dois índices na MESMA coleção — crie um "
-                       "índice Atlas Search em produtos_vector (veja scripts/populate_marketplace.py). "
-                       "Exibindo RRF calculado na aplicação."),
+            "reason": _fusion_fallback_reason("$scoreFusion"), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
             "elapsed_ms": fb.get("elapsed_ms", 0), "pipeline": None,
         }
@@ -1019,7 +1149,7 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
         fb = hybrid_rrf(query, k=60, n_search=limit, n_vector=limit)
         return {
             "native": False,
-            "reason": f"$scoreFusion indisponível neste cluster ({err[:120]}) — usando RRF na aplicação.",
+            "reason": _fusion_fallback_reason("$scoreFusion", err), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
             "elapsed_ms": fb.get("elapsed_ms", 0), "pipeline": pipeline,
         }
