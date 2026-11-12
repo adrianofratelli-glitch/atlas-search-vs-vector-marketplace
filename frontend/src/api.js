@@ -16,7 +16,7 @@ export const getMetrics = ()        => api.get("/api/metrics").then((r) => r.dat
 export const getAnalytics = (full = false) => api.get("/analytics", { params: { full } }).then((r) => r.data);
 export const findSimilar  = (body)  => api.post("/similar", body).then((r) => r.data);
 export const reviewsRag   = (query) => api.post("/reviews-rag", { query }).then((r) => r.data);
-export const hybridNative = (query) => api.post("/hybrid-native", { query }).then((r) => r.data);
+export const hybridNative = (query, rerank = false) => api.post("/hybrid-native", { query, rerank }).then((r) => r.data);
 export const hybridScoreFusion = (query) => api.post("/hybrid-score-fusion", { query }).then((r) => r.data);
 
 /**

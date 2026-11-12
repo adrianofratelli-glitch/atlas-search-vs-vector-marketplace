@@ -11,17 +11,19 @@ import ProductTable, { priceCol, MqlBlock } from "../components/ProductTable";
 export default function HybridRRF() {
   const [q, setQ] = useState("");
   const [engine, setEngine] = useState("native"); // "native" ($rankFusion) | "score" ($scoreFusion)
+  const [rerank, setRerank] = useState(false); // opt-in $rerank after $rankFusion (ADR-003)
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const run = async (eng) => {
+  const run = async (eng, rr) => {
     const useEngine = eng ?? engine;
+    const useRerank = rr ?? rerank;
     if (loading || !q.trim()) return;
     setLoading(true);
     setData(null);
     try {
       const fetchers = {
-        native: () => hybridNative(q),
+        native: () => hybridNative(q, useRerank),
         score: () => hybridScoreFusion(q),
       };
       setData(await fetchers[useEngine]());
@@ -34,6 +36,14 @@ export default function HybridRRF() {
     setData(null);
     setEngine(eng);
     if (q.trim()) run(eng);
+  };
+
+  const toggleRerank = () => {
+    if (loading) return;
+    const next = !rerank;
+    setRerank(next);
+    setData(null);
+    if (q.trim()) run("native", next);
   };
 
   const isScoreResult = engine === "score" && data?.native !== false;
@@ -65,6 +75,11 @@ export default function HybridRRF() {
     { key: "rank_vector", label: "Rank Vector", mono: true, align: "center", render: (r) => rankCell(r, "rank_vector", "v_score", vectorRanks) },
     { key: "both", label: "Nos dois", align: "center", render: (r) => (r.both ? "🏆" : "") },
   ];
+  const rerankApplied = engine === "native" && data?.rerank?.applied === true;
+  if (rerankApplied) {
+    rankCols.splice(3, 0, { key: "rerank_score", label: "Rerank", mono: true, align: "center", color: T.green,
+      render: (r) => <span style={{ fontWeight: 700 }}>{formatScore(r.rerank_score)}</span> });
+  }
 
   const scoreCols = [
     positionCol,
@@ -111,10 +126,17 @@ export default function HybridRRF() {
       </div>
 
       {engine === "native" && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.text2, marginBottom: 8, cursor: "pointer" }}>
+          <input type="checkbox" checked={rerank} disabled={loading} onChange={toggleRerank} />
+          Reordenar com <InlineCode darkMode>$rerank</InlineCode> (Voyage, executado pelo Atlas; +~250 ms no p50 medido e uma chamada de rerank por consulta)
+        </label>
+      )}
+      {engine === "native" && (
         <Body style={{ color: T.text3, fontSize: 12, marginBottom: 16 }}>
           <InlineCode darkMode>$rankFusion</InlineCode>: combina pelo <b>rank</b> de cada documento em cada busca, preservando empates
           (a magnitude do score bruto não entra na soma) — <InlineCode darkMode>score = Σ 1/(k + rank)</InlineCode>. Roda no
           servidor, num único aggregation stage.
+          {rerank && " Com o rerank, o modelo lê a descrição de cada candidato fundido e reordena a página; o rank e o RRF de cada busca continuam visíveis."}
         </Body>
       )}
       {engine === "score" && (
@@ -138,6 +160,9 @@ export default function HybridRRF() {
       {data && data.native === false && (
         <Banner variant="warning" darkMode style={{ marginBottom: 12 }}>{data.reason}</Banner>
       )}
+      {data?.rerank?.requested && !data.rerank.applied && data.rerank.reason && (
+        <Banner variant="warning" darkMode style={{ marginBottom: 12 }}>{data.rerank.reason}</Banner>
+      )}
       {data?.native === true && data?.degraded_reason && (
         <Banner variant="warning" darkMode style={{ marginBottom: 12 }}>{data.degraded_reason}</Banner>
       )}
@@ -155,6 +180,7 @@ export default function HybridRRF() {
                 {isNativeResult ? "⚙️ $scoreFusion no servidor" : "fallback: RRF na aplicação"}
               </Badge>
             )}
+            {rerankApplied && <Badge variant="green">$rerank {data.rerank.model}</Badge>}
             <Badge variant="green">Atlas Search {data.counts.n_search}</Badge>
             <Badge variant="blue">Vector {data.counts.n_vector}</Badge>
             <Badge variant="darkgray">Fusão {data.fused.length}</Badge>
@@ -171,6 +197,7 @@ export default function HybridRRF() {
             </Banner>
           )}
           <Body style={{ color: T.text2, fontSize: 12, marginBottom: 12 }}>
+            {rerankApplied ? "Posição final é a ordem do reranker (coluna Rerank). " : ""}
             Posição final é a ordem retornada nesta execução. Posições diferentes não indicam maior
             relevância quando os scores finais empatam.
             {!isScoreResult && " Abaixo de cada rank está sua contribuição para o RRF; — indica ausência naquela lista candidata, com contribuição zero. Valores arredondados a 5 casas decimais."}
