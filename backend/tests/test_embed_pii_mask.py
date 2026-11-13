@@ -155,6 +155,29 @@ class VectorLegCarriesMaskedText(unittest.TestCase):
         self.assertIs(out["pipeline"], self.executed[1])
         self.assertNotIn(EMAIL, _vector_queries(out["pipeline"])[0])
 
+    def test_app_rrf_fallbacks_keep_the_masked_flag(self):
+        # Without the lexical index on produtos_vector both fusions fall back to
+        # the application RRF, whose vector leg is masked too: the flag survives.
+        no_lex = [ix for ix in INDEXES if ix["type"] == "vectorSearch"]
+        with mock.patch.object(atlas, "get_search_indexes", return_value=no_lex):
+            for out in (atlas.hybrid_native(PII_QUERY, limit=10),
+                        atlas.hybrid_score_fusion(PII_QUERY, limit=10)):
+                self.assertFalse(out["native"])
+                self.assertTrue(out["embed_query_masked"])
+        self.assertTrue(_vector_queries(self.executed))
+        self.assertNotIn(EMAIL, json.dumps(_vector_queries(self.executed)))
+        # Native stage rejected by the cluster -> same fallback, same flag.
+        def reject_fusion(coll, pipe):
+            self.executed.append(pipe)
+            return (None, "Consulta MongoDB rejeitada.") if "$rankFusion" in pipe[0] or "$scoreFusion" in pipe[0] \
+                else ([], None)
+        with mock.patch.object(atlas, "safe_aggregate", side_effect=reject_fusion):
+            for out in (atlas.hybrid_native(PII_QUERY, limit=10),
+                        atlas.hybrid_score_fusion(PII_QUERY, limit=10)):
+                self.assertFalse(out["native"])
+                self.assertTrue(out["embed_query_masked"])
+        self.assertFalse(atlas.hybrid_native("Gel-Kayano 30", limit=10)["embed_query_masked"])
+
     def test_clean_query_reports_not_masked(self):
         out = atlas.hybrid_native("Gel-Kayano 30", limit=10)
         self.assertFalse(out["embed_query_masked"])
@@ -210,6 +233,15 @@ class AgentSemanticTool(unittest.TestCase):
         pipe = agent._pipe_busca_semantica(PII_QUERY)
         self.assertNotIn(EMAIL, pipe[0]["$vectorSearch"]["query"])
         self.assertEqual(agent.build_tool_pipeline("busca_semantica", {"consulta": PII_QUERY}), pipe)
+
+    def test_tool_masks_once(self):
+        import agent
+        with mock.patch.object(agent, "embed_query_text", wraps=agent.embed_query_text) as emb, \
+                mock.patch.object(agent, "_index_ready", return_value=True), \
+                mock.patch.object(agent, "safe_aggregate", return_value=([], None)) as agg:
+            agent.busca_semantica.invoke({"consulta": PII_QUERY})
+        self.assertEqual(emb.call_count, 1)
+        self.assertNotIn(EMAIL, agg.call_args[0][1][0]["$vectorSearch"]["query"])
 
     def test_mask_failure_blocks_the_tool(self):
         import agent

@@ -1030,6 +1030,7 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
             "native": False,
             "reason": _fusion_fallback_reason("$rankFusion"), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
+            "embed_query_masked": bool(fb.get("embed_query_masked")),
             "elapsed_ms": fb.get("elapsed_ms", 0), "k": 60, "pipeline": None,
             "rerank": {"requested": rerank, "applied": False, "model": None,
                        "reason": "sem $rankFusion nativo, o $rerank não roda" if rerank else None},
@@ -1106,6 +1107,7 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
             "native": False,
             "reason": _fusion_fallback_reason("$rankFusion", err), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
+            "embed_query_masked": bool(fb.get("embed_query_masked")),
             "elapsed_ms": fb.get("elapsed_ms", 0), "k": 60, "pipeline": pipeline,
             "rerank": {"requested": rerank, "applied": False, "model": None,
                        "reason": "sem $rankFusion nativo, o $rerank não roda" if rerank else None},
@@ -1186,6 +1188,7 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
             "native": False,
             "reason": _fusion_fallback_reason("$scoreFusion"), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
+            "embed_query_masked": bool(fb.get("embed_query_masked")),
             "elapsed_ms": fb.get("elapsed_ms", 0), "pipeline": None,
         }
 
@@ -1232,6 +1235,7 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
             "native": False,
             "reason": _fusion_fallback_reason("$scoreFusion", err), "error": fb.get("error"),
             "fused": fb.get("fused", []), "counts": fb.get("counts", {}),
+            "embed_query_masked": bool(fb.get("embed_query_masked")),
             "elapsed_ms": fb.get("elapsed_ms", 0), "pipeline": pipeline,
         }
 

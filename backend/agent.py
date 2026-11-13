@@ -47,9 +47,14 @@ def _pipe_busca_semantica(consulta: str) -> list:
     # The query text is embedded by Voyage (autoEmbed): PII-masked (ADR-004).
     # mask_pii is deterministic, so the trace rebuilds exactly what the tool ran;
     # on a mask failure the tool does not run and the trace shows the placeholder.
+    return _pipe_busca_semantica_masked(embed_query_text(consulta) or MASK_FAILED)
+
+
+def _pipe_busca_semantica_masked(masked: str) -> list:
+    """Pure builder over ALREADY-masked text (the tool masks once and reuses it)."""
     return [
         {"$vectorSearch": {"index": "produtos_vector", "path": "descricao",
-                           "query": embed_query_text(consulta) or MASK_FAILED,
+                           "query": masked,
                            "numCandidates": 150, "limit": 10}},
         {"$project": {"_id": 0, "nome": 1, "marca": 1, "categoria": 1, "preco": 1,
                       "avaliacao_media": 1, "score": {"$meta": "vectorSearchScore"}}},
@@ -115,11 +120,12 @@ PIPELINE_BUILDERS = {
 def busca_semantica(consulta: str) -> str:
     """Busca produtos por similaridade semântica. Use para: 'academia em casa',
     'presente para o dia dos pais', 'home office', etc."""
-    if embed_query_text(consulta) is None:
+    masked = embed_query_text(consulta)  # masked once, reused below
+    if masked is None:
         return f"Erro: {PII_MASK_UNAVAILABLE}"
     if not _index_ready("produtos_vector", vector=True):
         return "Erro: índice de busca vetorial (produtos_vector) não está pronto ou o cluster está inacessível."
-    results, err = safe_aggregate("produtos_vector", _pipe_busca_semantica(consulta))
+    results, err = safe_aggregate("produtos_vector", _pipe_busca_semantica_masked(masked))
     if err:
         return f"Erro na busca semântica: {err}"
     if not results:
