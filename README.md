@@ -49,7 +49,7 @@ Ties in the lexical score are still real: the catalog has dozens of units of the
 
 **6. Review RAG**: `$search` finds the most relevant product that has reviews, MongoDB returns the reviews, and Claude summarizes strictly grounded in that data. Reviews are customer-written text: any review that looks like a prompt injection is kept out of the prompt and flagged in the UI.
 
-**7. AI agent**: a LangGraph ReAct agent with four MongoDB tools, long-term memory through `MongoDBSaver`, and a trace built by the same functions the tools execute, byte for byte what ran. PII is masked before the model, the checkpoint and the trace see the message; direct prompt injection is answered without calling the model.
+**7. AI agent**: a LangGraph ReAct agent with four MongoDB tools, long-term memory through `MongoDBSaver`, and a trace built by the same functions the tools execute, byte for byte what ran. PII is masked before the model, the checkpoint and the trace see the message (and before Voyage embeds the `busca_semantica` query, as in every vector search: [ADR-004](docs/adr/0004-mascara-pii-no-autoembed.md)); direct prompt injection is answered without calling the model.
 
 ![AI agent tab with tool calls and the MQL trace](docs/screenshots/ai-agent.png)
 
@@ -192,6 +192,23 @@ Measured on the demo db (500K, 2026-11-12, after [ADR-002](docs/adr/0002-rankfus
 Native hybrid matches or beats each single mode on recall@5 and keeps 100% on exact-name and typo queries. Before ADR-002 it scored recall@5 0.77 and MRR 0.70 (draft golden set): tied lexical scores got the same rank inside `$rankFusion` and pushed the vector hits out of the top 5. MRR varies between runs and with the candidate limit (0.846 to 0.87 on the validated set) because the first lexical and first vector hits tie at `1/61` and the server breaks that fusion tie. The opt-in `$rerank` cascade removes that dependence: it reads each fused candidate's description, puts the relevant product first in n02, d02, i03 and i04, and fixes m01 ("Nike shoes for a marathon", where both engines rank the wrong Nike model first); precision@5 goes from 0.74 to 0.93, at about 250 ms more at the p50 (664 → 913 ms). i05 ("protein to gain muscle mass") is still missed by every mode: no whey or mass gainer reaches the fused candidates. The weekly eval keeps floors for these numbers (`hybrid >= lexical`, `hybrid >= vector`, `application RRF >= each mode`).
 
 The golden set in `eval/golden.json` was **reviewed and validated** on 2026-11-12 (targets from the synthetic catalog in `scripts/populate_marketplace.py`, judged by product model; the two intent queries i04 "professional camera" and i05 "muscle-gain supplement" were narrowed to professional cameras and whey/mass gainer). Numbers above use the validated set.
+
+**Draft set (not human-labelled).** `eval/golden_rascunho.json` adds 26 more queries proposed on 2026-11-13 and marked **RASCUNHO**: synonyms ("laptop", "headphone sem fio"), typos ("iphnoe 15 pro"), attribute + category ("notebook gamer", "smart tv OLED"), English queries over the Portuguese catalog ("running shoes", "cat food"), numbers and units ("geladeira 431 litros", "tv 55 polegadas") and two queries carrying a synthetic e-mail or CPF. Its targets still need the user's review (open questions listed in the file), so its numbers are reported apart and are not evidence yet:
+
+```bash
+.venv/bin/python eval/run_quality.py --gabarito rascunho --out /tmp/search_quality_draft.json
+```
+
+| Mode (draft set, demo db, 2026-11-13) | recall@5 | MRR |
+|---|---|---|
+| lexical | 0.54 | 0.54 |
+| vector | 0.96 | 0.97 |
+| native hybrid | 0.96 | 0.88 |
+| hybrid + `$rerank` | 1.00 | 1.00 |
+
+Lexical scores 0 on synonyms and 0.2 in English; vector and hybrid get them. "notebook gamer" is missed by every mode except the rerank cascade.
+
+**PII and Voyage.** Every text sent to Voyage (the autoEmbed query of each `$vectorSearch`, and `$rerank`) is PII-masked first, and the pipeline shown carries the masked text ([ADR-004](docs/adr/0004-mascara-pii-no-autoembed.md)). On the validated set the mask changed no query, and recall@5 and MRR are identical before and after (same top 5 in all 26 queries); a test pins that the mask returns every eval query without PII byte for byte. `--sem-mascara` exists only for that A/B.
 
 ## License
 

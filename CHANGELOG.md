@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Máscara de PII em todo texto enviado à Voyage: a `query` de cada `$vectorSearch` (autoEmbed) e o `$rerank` levam o texto mascarado, visível no MQL e sinalizado por `embed_query_masked` e badge; falha da máscara não envia nada à Voyage ([ADR-004](docs/adr/0004-mascara-pii-no-autoembed.md)). Eval validado igual antes e depois.
+- Eval: gabarito rascunho `eval/golden_rascunho.json` (26 consultas: sinônimo, digitação, atributo + categoria, inglês, unidade, PII; sem rótulo humano), `--gabarito rascunho`, `--sem-mascara` para o A/B e alvo fora do catálogo vira erro.
 - Índice de busca ausente ou ainda não consultável deixa de virar "0 resultados" silencioso: `safe_aggregate` confere `$listSearchIndexes` (antes e diante de resposta vazia) e devolve o motivo, que a UI mostra em banner. Medido no Atlas 9.0.7: `$search`/`$vectorSearch`/`$searchMeta` com índice inexistente não geram erro.
 - Fallback de `$rankFusion`/`$scoreFusion` nomeia a causa real (índice lexical em construção, índice não consultável) e repassa o erro do RRF de fallback.
 - `$rerank` opcional após o `$rankFusion` (`POST /hybrid-native` com `rerank: true`, checkbox na aba Híbrida), com volta ao `$rankFusion` puro se o cluster recusar ([ADR-003](docs/adr/0003-rerank-opcional-apos-rankfusion.md)).

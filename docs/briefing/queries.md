@@ -225,11 +225,13 @@ Usada em várias abas — a query "crua" mais simples está em `agent.py` (ver s
 {"$vectorSearch": {
     "index": "produtos_vector",
     "path": "descricao",
-    "query": query,          # texto puro — o autoEmbed do Atlas gera o embedding no servidor
+    "query": embed_query_text(query),   # texto com PII mascarada; o autoEmbed do Atlas chama a Voyage
     "numCandidates": _num_candidates(limit, multiplier),
     "limit": limit,
 }}
 ```
+
+**Texto enviado à Voyage** ([ADR-004](../adr/0004-mascara-pii-no-autoembed.md)): o autoEmbed gera o embedding chamando a Voyage AI, um terceiro. Por isso toda `query` de `$vectorSearch` (e o texto do `$rerank`) passa por `embed_query_text()` (`backend/atlas.py`), que aplica `llm_gateway.mask_pii` (CPF/CNPJ, telefone, e-mail, cartão, chave PIX aleatória). O pipeline exibido carrega o texto mascarado, e a resposta traz `embed_query_masked`. O `$search` lexical fica com o texto original, porque não sai do cluster. Se a máscara falhar, nada vai à Voyage: `/compare` roda só a perna lexical e nomeia o motivo (`PII_MASK_UNAVAILABLE`); híbridos, `/similar` e a ferramenta do agente devolvem o erro sem executar. Sem PII, o texto sai byte a byte igual (`backend/tests/test_embed_pii_mask.py`, sobre todas as consultas do eval), e o eval validado deu métricas e top 5 idênticos antes e depois.
 
 `_num_candidates(limit, multiplier=10)` (`backend/atlas.py`) centraliza o cálculo — por padrão o pool de candidatos é 10x o `limit` (guidance do MongoDB para o ANN/HNSW: candidatos demais custa latência, de menos custa recall). Multiplicadores maiores (15x, 22x) são usados quando há pré-filtro pesado ou a comparação precisa de mais recall, e cada call site documenta por quê.
 
@@ -356,7 +358,7 @@ Local: `rerank_stages()` e `hybrid_native(query, limit, rerank=True)` (`backend/
               "rrf_score": 1, "rerank_score": {"$meta": "score"}, "scoreDetails": "$rrf_details"}},
 ```
 
-**Por que existe** ([ADR-003](../adr/0003-rerank-opcional-apos-rankfusion.md)): o RRF só vê posições; o reranker lê a descrição de cada candidato fundido. Eval no banco da demo (26 consultas, gabarito validado, 2026-11-12): recall@5 0,923 → 0,962, MRR 0,846–0,865 → 0,962, P@5 0,74 → 0,93; latência p50 664 → 913 ms. O `$addFields` vem antes porque o `$rerank` substitui `$meta: "score"`; sem ele a aba perderia o rank de cada busca. Se o cluster recusar o `$rerank`, a resposta volta ao `$rankFusion` puro com `rerank.applied = false` e `rerank.reason`. Se o Atlas estiver inacessível ou a aggregation estourar o tempo, o erro volta como está, sem fallback e sem culpar o `$rerank`. O texto enviado ao reranker passa por `mask_pii` (`rerank_query_text`); se a própria máscara falhar, o `$rerank` não roda e a resposta traz o `$rankFusion` puro com `rerank.applied = false` e o motivo. Opt-in: uma chamada de rerank Voyage por consulta.
+**Por que existe** ([ADR-003](../adr/0003-rerank-opcional-apos-rankfusion.md)): o RRF só vê posições; o reranker lê a descrição de cada candidato fundido. Eval no banco da demo (26 consultas, gabarito validado, 2026-11-12): recall@5 0,923 → 0,962, MRR 0,846–0,865 → 0,962, P@5 0,74 → 0,93; latência p50 664 → 913 ms. O `$addFields` vem antes porque o `$rerank` substitui `$meta: "score"`; sem ele a aba perderia o rank de cada busca. Se o cluster recusar o `$rerank`, a resposta volta ao `$rankFusion` puro com `rerank.applied = false` e `rerank.reason`. Se o Atlas estiver inacessível ou a aggregation estourar o tempo, o erro volta como está, sem fallback e sem culpar o `$rerank`. O texto enviado ao reranker é o mesmo texto mascarado da perna vetorial (`embed_query_text`, ADR-004); se a própria máscara falhar, nada vai à Voyage e a resposta volta com o erro `PII_MASK_UNAVAILABLE` e `rerank.applied = false`. Opt-in: uma chamada de rerank Voyage por consulta.
 
 ---
 

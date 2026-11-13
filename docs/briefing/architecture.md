@@ -138,7 +138,7 @@ python3 scripts/setup_search_indexes.py --status   # só mostra status dos índi
 ## Resiliência
 
 - **MongoDB** (`backend/atlas.py`): `serverSelectionTimeoutMS`/`connectTimeoutMS` 5 s, `socketTimeoutMS` 15 s, `waitQueueTimeoutMS` 5 s, `maxTimeMS` 10 s por agregação. Cluster inacessível vira "Atlas inacessível…" (sem host nem mensagem crua do driver); `AutoReconnect`/`NetworkTimeout` e throttling do autoEmbed (Voyage, 429/5xx) ganham uma retentativa (`MONGODB_APP_RETRIES`, 0 desliga). `/stats` e `/compare` não esperam o timeout duas vezes quando o cluster já caiu.
-- **Voyage**: o embedding da query roda dentro do Atlas (autoEmbed), então o timeout dele é o `maxTimeMS` da agregação e a retentativa é a de cima. Não há cliente Voyage no app.
+- **Voyage**: o embedding da query roda dentro do Atlas (autoEmbed), então o timeout dele é o `maxTimeMS` da agregação e a retentativa é a de cima. Não há cliente Voyage no app. O texto que vai à Voyage (consulta do `$vectorSearch` e do `$rerank`) sai com PII mascarada; se a máscara falhar, a perna vetorial não roda (ADR-004, `docs/adr/0004-mascara-pii-no-autoembed.md`).
 - **LLM**: `grove_client` (timeout 30 s por tentativa, 2 retries, breaker 5/30 s) + teto de passos ReAct.
 - **Entrada**: queries normalizadas (NFC, sem zero-width/bidi/controle), filtros e preços com limite, `NaN`/`Infinity` recusados, corpo acima de 64 KB → 413, 422 sem eco do payload, `X-Request-Id` saneado, refresh do analytics em single-flight.
 

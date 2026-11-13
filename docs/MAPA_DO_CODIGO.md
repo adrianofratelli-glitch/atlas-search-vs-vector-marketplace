@@ -38,8 +38,12 @@ scripts/
   setup_search_indexes.py         Cria/atualiza os índices Atlas Search e Vector Search (`--status` lista)
   reset_demo.py                   Prepara a demo: memória do agente, espelho, sinônimos, índices (e catálogo com --rebuild-catalog)
   bench_thesis.py                 Benchmark: híbrida nativa x fusão na aplicação; frescor do espelho
+eval/
+  run_quality.py                  Eval de qualidade (recall@5/MRR por modo); `--gabarito rascunho`, `--sem-mascara` (A/B do ADR-004)
+  golden.json                     Gabarito VALIDADO pelo usuário (26 consultas)
+  golden_rascunho.json            Gabarito RASCUNHO (26 consultas novas, sem rótulo humano)
 docs/briefing/                    Briefings
-docs/adr/                         Decisão de arquitetura (RRF x RSF)
+docs/adr/                         Decisões de arquitetura (0001 RRF x RSF, 0002 desempate, 0003 $rerank, 0004 PII no autoEmbed)
 docs/screenshots/                 Capturas
 start.sh, docker/, Dockerfile, nginx.conf             Subir e empacotar
 ```
@@ -109,7 +113,7 @@ Detalhe e exemplos em [briefing/queries.md](briefing/queries.md). Linhas de `bac
 
 **Chamadas externas**:
 - Claude via gateway Grove: agente (`agent.py::run_agent`, `invoke` do grafo em `_get_agent`) e resumo de reviews (`reviews.py:84`).
-- Voyage: não é chamado pelo código Python. O embedding é feito dentro do Atlas pelo índice com autoEmbed (`voyage-4`, definido em `scripts/setup_search_indexes.py`), por isso os `$vectorSearch` passam `query` em texto e não `queryVector`.
+- Voyage: não é chamado pelo código Python. O embedding é feito dentro do Atlas pelo índice com autoEmbed (`voyage-4`, definido em `scripts/setup_search_indexes.py`), por isso os `$vectorSearch` passam `query` em texto e não `queryVector`. Esse texto (e o do `$rerank`) passa antes por `atlas.py::embed_query_text`, que aplica a máscara de PII ([ADR-004](adr/0004-mascara-pii-no-autoembed.md)).
 - Langfuse: `backend/langfuse_tracing.py`, usado em `agent.py` e `reviews.py`; fail-open.
 
 ## 5. "Quero mexer em..." (atalhos)
@@ -140,6 +144,7 @@ Rodar (do README): `.venv/bin/python -m unittest discover -s backend/tests` (off
 | `backend/tests/test_request_models.py` | `SimilarReq` exige `produto_id` ou `nome` |
 | `backend/tests/test_index_readiness.py` | Índice ausente ou não consultável vira erro, não lista vazia: extração dos índices (inclusive dentro de `$rankFusion`), releitura do cache negativo, resposta vazia relida, fail-open sem listagem, `degraded` no `/compare`, motivo do fallback híbrido |
 | `backend/tests/test_rerank.py` | Cascata `$rankFusion` → `$rerank` (ADR-003): estágios, paridade do trace, volta ao `$rankFusion` puro se o `$rerank` for recusado, métricas novas do eval |
+| `backend/tests/test_embed_pii_mask.py` | Máscara de PII no texto enviado à Voyage (ADR-004): identidade em todas as consultas do eval sem PII, texto mascarado no `$vectorSearch` e no `$rerank` de cada endpoint e da tool do agente, falha da máscara sem envio à Voyage |
 | `backend/tests/test_observability.py` | Contadores de requisição e de negócio |
 | `frontend/tests/e2e_demo.py` | Roteiro ponta a ponta da demo |
 | `frontend/tests/ui_visual_smoke.py` | Smoke visual das abas |

@@ -50,7 +50,7 @@ O agente é restrito ao domínio do marketplace. Duas camadas:
 
 Ordem em `run_agent`:
 
-1. **Máscara de PII** (`llm_gateway.mask_pii`, que usa `guardrails.mask_pii` do `pov-shared`: CPF/CNPJ com dígito verificador, telefone, e-mail). O modelo, o checkpoint e o trace do Langfuse só recebem o texto mascarado.
+1. **Máscara de PII** (`llm_gateway.mask_pii`, que usa `guardrails.mask_pii` do `pov-shared`: CPF/CNPJ com dígito verificador, telefone, e-mail). O modelo, o checkpoint e o trace do Langfuse só recebem o texto mascarado. A ferramenta `busca_semantica` mascara de novo o argumento `consulta` antes do `$vectorSearch` (`embed_query_text`, ADR-004), porque o autoEmbed envia esse texto à Voyage; o trace mostra o mesmo pipeline mascarado. Se a máscara falhar, a ferramenta devolve "Erro: …" sem consultar o banco.
 2. **Fora de escopo** (acima).
 3. **Prompt injection direta** (`guardrails.check_injection`, heurística PT/EN/ES offline): se casar, responde `INJECTION_GUIDANCE` (`mode: "injection_blocked"`) sem chamar o modelo. A heurística procura o padrão em qualquer posição, então diluir a instrução num texto benigno longo não a esconde (teste `test_diluted_injection_still_blocked`). Por isso `score_by_clause` não se aplica aqui: não há score por embedding.
 4. **Teto de passos**: `recursion_limit = AGENT_RECURSION_LIMIT` (padrão 12). Estourou, responde `mode: "step_limit"` pedindo uma pergunta mais específica.
