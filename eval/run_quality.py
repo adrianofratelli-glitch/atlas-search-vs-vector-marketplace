@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Quality eval of the repo thesis: lexical x vector x hybrid on the same corpus.
 
-For each case in eval/golden.json (query + known target products from the seed
-catalog), runs the backend's own search functions (backend/atlas.py, no
+For each case in the answer key (query + known target products from the seed
+catalog; eval/golden.json, VALIDATED by the user, by default; --gabarito rascunho
+reads eval/golden_rascunho.json, a DRAFT proposed by the agent and not yet
+labelled by a human: report its numbers separately and as draft), runs the backend's own search functions (backend/atlas.py, no
 reimplemented pipeline) and scores the top 10 of each mode:
 
   lexical   compare_search_vector(mode="compound") -> "search" leg ($search on produtos_vector)
@@ -21,7 +23,13 @@ Each query spends one Voyage query embedding per vector leg (autoEmbed) and one
 Voyage rerank call (hybrid_rerank). No LLM. Latency per mode is reported too.
 Always exits 0: the weekly runner's floors decide (eval_pisos.json).
 
+Every text sent to Voyage (autoEmbed query, $rerank) is PII-masked by the
+backend (ADR-004); each case reports whether the mask changed its query.
+--sem-mascara is a measurement switch for the A/B of that decision only (it
+swaps the mask for identity inside this process); the API has no such flag.
+
     .venv/bin/python eval/run_quality.py --out /tmp/search_quality.json [--db marketplace_test]
+    .venv/bin/python eval/run_quality.py --gabarito rascunho --out /tmp/q_rascunho.json
 """
 
 from __future__ import annotations
@@ -34,7 +42,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GOLDEN = ROOT / "eval" / "golden.json"
+GOLDEN = ROOT / "eval" / "golden.json"            # VALIDATED by the user
+GOLDEN_DRAFT = ROOT / "eval" / "golden_rascunho.json"  # DRAFT: labels pending human review
+GOLDENS = {"validado": GOLDEN, "rascunho": GOLDEN_DRAFT}
 MODES = ("lexical", "vector", "hybrid", "hybrid_app_rrf", "hybrid_rerank")
 TOP_K = 10
 
@@ -53,6 +63,10 @@ def catalog_index() -> dict[str, list[str]]:
 
 def target_set(case: dict, catalog: dict[str, list[str]]) -> set[str]:
     targets = set(case.get("alvo", []))
+    known = {p for items in catalog.values() for p in items}
+    unknown = sorted(targets - known)
+    if unknown:
+        raise ValueError(f"{case['id']}: alvo fora do catálogo {unknown}")
     for sub in case.get("subcategorias", []):
         if sub not in catalog:
             raise ValueError(f"{case['id']}: subcategoria desconhecida {sub!r}")
@@ -123,13 +137,16 @@ def summarize(rows: list[dict]) -> dict:
     return {"summary": summary, "by_type": by_type}
 
 
-def run(db_name: str | None) -> dict:
+def run(db_name: str | None, gabarito: str = "validado", sem_mascara: bool = False) -> dict:
     if db_name:
         os.environ["DB_NAME"] = db_name
     sys.path.insert(0, str(ROOT / "backend"))
     import atlas  # noqa: E402  (lazy client; first query connects)
 
-    golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    mask = atlas.embed_query_text  # what the backend sends to Voyage
+    if sem_mascara:  # A/B measurement of ADR-004 only; never a product switch
+        atlas.embed_query_text = lambda text: text
+    golden = json.loads(GOLDENS[gabarito].read_text(encoding="utf-8"))
     catalog = catalog_index()
     rows, errors, fallbacks, rerank_fallbacks, latencies = [], [], 0, 0, {}
     t0 = time.time()
@@ -159,15 +176,18 @@ def run(db_name: str | None) -> dict:
             "hybrid_rerank": [d.get("nome") for d in rr.get("fused", [])],
         }
         rows.append({"id": case["id"], "tipo": case["tipo"], "consulta": case["consulta"],
+                     "masked": mask(case["consulta"]) != case["consulta"],
                      "modes": {m: score_case(ranked[m], targets) for m in MODES},
                      "top5": {m: [product_key(n) for n in ranked[m][:5]]
                               for m in ("lexical", "vector", "hybrid", "hybrid_rerank")}})
     out = summarize(rows)
     out["summary"].update(cases=len(rows), errors=len(errors), hybrid_native_fallbacks=fallbacks,
                           rerank_fallbacks=rerank_fallbacks,
+                          queries_masked=sum(r["masked"] for r in rows),
                           latency_ms_p50={m: median_ms(v) for m, v in latencies.items()})
     out.update(db=atlas.DB_NAME, same_corpus=bool(atlas.vector_collection_search_index()),
-               golden_status=golden.get("_status"), elapsed_s=round(time.time() - t0, 1),
+               gabarito=gabarito, golden_status=golden.get("_status"),
+               pii_mask="desligada (A/B)" if sem_mascara else "ligada", elapsed_s=round(time.time() - t0, 1),
                errors=errors, cases=rows)
     return out
 
@@ -176,9 +196,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=str(ROOT / "eval" / "reports" / "quality.json"))
     ap.add_argument("--db", help="override DB_NAME (read-only; default: .env)")
+    ap.add_argument("--gabarito", choices=sorted(GOLDENS), default="validado",
+                    help="validado (eval/golden.json, padrão) ou rascunho (eval/golden_rascunho.json, sem rótulo humano)")
+    ap.add_argument("--sem-mascara", action="store_true",
+                    help="só para o A/B do ADR-004: troca a máscara de PII por identidade neste processo")
     args = ap.parse_args(argv)
     try:
-        result = run(args.db)
+        result = run(args.db, args.gabarito, args.sem_mascara)
     except Exception as exc:  # noqa: BLE001 - floors decide; report the failure in the JSON
         result = {"summary": {"cases": 0, "errors": 1}, "fatal": f"{type(exc).__name__}: {exc}"[:300]}
     out = Path(args.out)
@@ -188,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
     if "fatal" in result:
         print(f"eval de qualidade falhou: {result['fatal']}")
     else:
+        print(f"gabarito {result['gabarito']} ({((result['golden_status'] or '?').split() or ['?'])[0]}), "
+              f"máscara de PII {result['pii_mask']}, consultas alteradas pela máscara {s['queries_masked']}")
         print(f"{s['cases']} consultas em {result['db']} ({result['elapsed_s']} s), erros {s['errors']}, "
               f"fallback do $rankFusion {s['hybrid_native_fallbacks']}, do $rerank {s['rerank_fallbacks']}")
         for m in MODES:

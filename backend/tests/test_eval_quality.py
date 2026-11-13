@@ -61,6 +61,28 @@ class TestGolden(unittest.TestCase):
             targets = rq.target_set(case, catalog)
             self.assertTrue(targets <= known, f"{case['id']}: alvo fora do catálogo seed")
 
+    def test_validated_set_untouched_and_draft_kept_apart(self):
+        validated = json.load(open(rq.GOLDENS["validado"], encoding="utf-8"))
+        draft = json.load(open(rq.GOLDENS["rascunho"], encoding="utf-8"))
+        self.assertTrue(validated["_status"].startswith("VALIDADO"))
+        self.assertEqual(len(validated["casos"]), 26)
+        # The draft is never presented as human-labelled.
+        self.assertTrue(draft["_status"].startswith("RASCUNHO"))
+        self.assertEqual(len(draft["casos"]), 26)
+        self.assertEqual({c["tipo"] for c in draft["casos"]},
+                         {"sinonimo", "digitacao", "atributo", "ingles", "unidade", "pii"})
+        ids_v = {c["id"] for c in validated["casos"]}
+        ids_d = [c["id"] for c in draft["casos"]]
+        self.assertEqual(len(ids_d), len(set(ids_d)))
+        self.assertFalse(ids_v & set(ids_d))
+        catalog = rq.catalog_index()
+        for case in draft["casos"]:
+            rq.target_set(case, catalog)  # raises on an unknown target
+
+    def test_unknown_target_is_an_error(self):
+        with self.assertRaises(ValueError):
+            rq.target_set({"id": "x", "alvo": ["Marca Inexistente 9000"]}, rq.catalog_index())
+
 
 if __name__ == "__main__":
     unittest.main()

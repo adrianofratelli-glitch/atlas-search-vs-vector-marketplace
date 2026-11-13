@@ -1,0 +1,250 @@
+{
+  "_status": "RASCUNHO — proposto pelo agente em 2026-11-13, NÃO validado. O rótulo (alvo) é do usuário: revise caso a caso antes de usar estes números como evidência. Não altera nem substitui eval/golden.json (validado).",
+  "_formato": "Mesmo formato de eval/golden.json. 'tipo': sinonimo (palavra diferente da do catálogo), digitacao (erro de digitação), atributo (atributo + categoria), ingles (consulta em inglês sobre catálogo em português), unidade (número ou unidade de medida), pii (consulta com e-mail/CPF sintéticos: mede o efeito da máscara de PII do ADR-004). E-mail e CPF são fictícios.",
+  "_revisar": [
+    "a02: só o ROG Zephyrus é 'gamer' no catálogo; outros notebooks potentes contam?",
+    "a03: o Sony A95L é QD-OLED; conta como OLED?",
+    "a05: outras rações adultas genéricas (Purina Pro Plan Adult, Golden) contam para porte grande?",
+    "s02/u01/u04: alvo restrito ao que a consulta nomeia (marca, peso, polegadas)."
+  ],
+  "casos": [
+    {
+      "id": "s01",
+      "tipo": "sinonimo",
+      "consulta": "headphone sem fio",
+      "subcategorias": [
+        "Fones de Ouvido"
+      ]
+    },
+    {
+      "id": "s02",
+      "tipo": "sinonimo",
+      "consulta": "celular Samsung",
+      "alvo": [
+        "Samsung Galaxy S24 Ultra",
+        "Samsung Galaxy A55 5G"
+      ]
+    },
+    {
+      "id": "s03",
+      "tipo": "sinonimo",
+      "consulta": "fritadeira elétrica sem óleo",
+      "alvo": [
+        "Tramontina Air Fryer Digital 4L",
+        "Philips Airfryer XXL 7.3L"
+      ]
+    },
+    {
+      "id": "s04",
+      "tipo": "sinonimo",
+      "consulta": "laptop",
+      "subcategorias": [
+        "Notebooks"
+      ]
+    },
+    {
+      "id": "s05",
+      "tipo": "sinonimo",
+      "consulta": "suplemento de proteína do soro do leite",
+      "alvo": [
+        "Whey Premium Whey Protein Concentrado 2kg",
+        "Max Titanium Whey 100% Concentrado 2kg",
+        "Integral Medica Whey Fusion 1.8kg",
+        "Optimum Gold Standard Whey 2.27kg"
+      ]
+    },
+    {
+      "id": "t01",
+      "tipo": "digitacao",
+      "consulta": "iphnoe 15 pro",
+      "alvo": [
+        "Apple iPhone 15 Pro Max"
+      ]
+    },
+    {
+      "id": "t02",
+      "tipo": "digitacao",
+      "consulta": "airpods prro",
+      "alvo": [
+        "Apple AirPods Pro 2ª Geração"
+      ]
+    },
+    {
+      "id": "t03",
+      "tipo": "digitacao",
+      "consulta": "nintendo swich",
+      "alvo": [
+        "Nintendo Switch OLED"
+      ]
+    },
+    {
+      "id": "t04",
+      "tipo": "digitacao",
+      "consulta": "garmin forerruner",
+      "alvo": [
+        "Garmin Forerunner 965"
+      ]
+    },
+    {
+      "id": "t05",
+      "tipo": "digitacao",
+      "consulta": "protetor solar antelios",
+      "alvo": [
+        "La Roche-Posay Protetor Solar Anthelios Toque Seco FPS60"
+      ]
+    },
+    {
+      "id": "a01",
+      "tipo": "atributo",
+      "consulta": "tênis de corrida com amortecimento",
+      "alvo": [
+        "Nike Air Zoom Pegasus 41",
+        "Nike React Infinity Run 4",
+        "Adidas Ultraboost 23",
+        "New Balance Fresh Foam X 1080",
+        "ASICS Gel-Nimbus 26",
+        "ASICS Gel-Kayano 30",
+        "Under Armour HOVR Infinite 5",
+        "Brooks Ghost 16",
+        "Puma Velocity Nitro 3",
+        "Saucony Endorphin Speed 4"
+      ]
+    },
+    {
+      "id": "a02",
+      "tipo": "atributo",
+      "consulta": "notebook gamer",
+      "alvo": [
+        "ASUS ROG Zephyrus G16"
+      ]
+    },
+    {
+      "id": "a03",
+      "tipo": "atributo",
+      "consulta": "smart tv OLED",
+      "alvo": [
+        "LG OLED C4 65\"",
+        "Sony Bravia XR A95L 65\""
+      ]
+    },
+    {
+      "id": "a04",
+      "tipo": "atributo",
+      "consulta": "vestido de festa",
+      "alvo": [
+        "Shoulder Vestido de Festa"
+      ]
+    },
+    {
+      "id": "a05",
+      "tipo": "atributo",
+      "consulta": "ração para cachorro de porte grande",
+      "alvo": [
+        "Royal Canin Ração Large Adult 15kg"
+      ]
+    },
+    {
+      "id": "e01",
+      "tipo": "ingles",
+      "consulta": "noise cancelling headphones",
+      "subcategorias": [
+        "Fones de Ouvido"
+      ]
+    },
+    {
+      "id": "e02",
+      "tipo": "ingles",
+      "consulta": "running shoes",
+      "alvo": [
+        "Nike Air Zoom Pegasus 41",
+        "Nike React Infinity Run 4",
+        "Adidas Ultraboost 23",
+        "New Balance Fresh Foam X 1080",
+        "ASICS Gel-Nimbus 26",
+        "ASICS Gel-Kayano 30",
+        "Under Armour HOVR Infinite 5",
+        "Brooks Ghost 16",
+        "Puma Velocity Nitro 3",
+        "Saucony Endorphin Speed 4"
+      ]
+    },
+    {
+      "id": "e03",
+      "tipo": "ingles",
+      "consulta": "coffee machine",
+      "alvo": [
+        "Nespresso Vertuo Next",
+        "Nespresso Essenza Mini"
+      ]
+    },
+    {
+      "id": "e04",
+      "tipo": "ingles",
+      "consulta": "cat food",
+      "subcategorias": [
+        "Ração para Gatos"
+      ]
+    },
+    {
+      "id": "e05",
+      "tipo": "ingles",
+      "consulta": "blood pressure monitor",
+      "alvo": [
+        "Omron Monitor de Pressão de Pulso"
+      ]
+    },
+    {
+      "id": "u01",
+      "tipo": "unidade",
+      "consulta": "whey 2kg",
+      "alvo": [
+        "Whey Premium Whey Protein Concentrado 2kg",
+        "Max Titanium Whey 100% Concentrado 2kg"
+      ]
+    },
+    {
+      "id": "u02",
+      "tipo": "unidade",
+      "consulta": "geladeira 431 litros",
+      "alvo": [
+        "Electrolux Geladeira Frost Free 431L"
+      ]
+    },
+    {
+      "id": "u03",
+      "tipo": "unidade",
+      "consulta": "lavadora 11 kg",
+      "alvo": [
+        "Brastemp Lavadora 11kg"
+      ]
+    },
+    {
+      "id": "u04",
+      "tipo": "unidade",
+      "consulta": "tv 55 polegadas",
+      "alvo": [
+        "Samsung QLED 55\"",
+        "LG NanoCell 55\"",
+        "Sony X90L 55\"",
+        "TCL QLED 55\" 4K"
+      ]
+    },
+    {
+      "id": "p01",
+      "tipo": "pii",
+      "consulta": "fone bluetooth para academia, me responde no ana.souza@exemplo.com",
+      "subcategorias": [
+        "Fones de Ouvido"
+      ]
+    },
+    {
+      "id": "p02",
+      "tipo": "pii",
+      "consulta": "air fryer grande, meu cpf é 123.456.789-09",
+      "alvo": [
+        "Tramontina Air Fryer Digital 4L",
+        "Philips Airfryer XXL 7.3L"
+      ]
+    }
+  ]
+}
