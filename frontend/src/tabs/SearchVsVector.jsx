@@ -104,6 +104,9 @@ export default function SearchVsVector() {
                 ? "mesmo corpus (produtos_vector · 500K) nos dois motores"
                 : "corpora distintos: Search em 20M · Vector em 500K (amostra)"}
             </Badge>
+            {data.embed_query_masked && (
+              <Badge variant="blue">PII mascarada no texto enviado à Voyage (autoEmbed)</Badge>
+            )}
           </div>
           <div className="responsive-three-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 10 }}>
             <Col title="🔤 Atlas Search" subtitle={data.mode === "phrase" ? "frase literal" : "compound + fuzzy"}

@@ -157,7 +157,7 @@ export default function HybridRRF() {
 
       {data?.error && <Banner variant="danger" darkMode>{data.error}</Banner>}
 
-      {data && data.native === false && (
+      {data && data.native === false && data.reason !== data.error && (
         <Banner variant="warning" darkMode style={{ marginBottom: 12 }}>{data.reason}</Banner>
       )}
       {data?.rerank?.requested && !data.rerank.applied && data.rerank.reason && (
@@ -181,6 +181,9 @@ export default function HybridRRF() {
               </Badge>
             )}
             {rerankApplied && <Badge variant="green">$rerank {data.rerank.model}</Badge>}
+            {data.embed_query_masked && (
+              <Badge variant="blue">PII mascarada antes da Voyage (veja o $vectorSearch no MQL)</Badge>
+            )}
             <Badge variant="green">Atlas Search {data.counts.n_search}</Badge>
             <Badge variant="blue">Vector {data.counts.n_vector}</Badge>
             <Badge variant="darkgray">Fusão {data.fused.length}</Badge>

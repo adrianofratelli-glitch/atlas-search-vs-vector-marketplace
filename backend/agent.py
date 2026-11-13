@@ -19,8 +19,9 @@ from langgraph.checkpoint.mongodb import MongoDBSaver
 import observability
 import langfuse_tracing as lf
 from pymongo.errors import ConnectionFailure
-from atlas import ATLAS_UNREACHABLE, db, safe_aggregate, _client, DB_NAME, get_search_indexes
-from llm_gateway import build_chat_model, check_injection, mask_pii
+from atlas import (ATLAS_UNREACHABLE, PII_MASK_UNAVAILABLE, db, safe_aggregate, _client, DB_NAME,
+                   embed_query_text, get_search_indexes)
+from llm_gateway import MASK_FAILED, build_chat_model, check_injection, mask_pii
 
 logger = logging.getLogger("searchxvector.agent")
 
@@ -43,8 +44,12 @@ AGENT_RECURSION_LIMIT = max(4, int(os.getenv("AGENT_RECURSION_LIMIT", "12")))
 # The tools execute these pipelines and the trace shows them: what the UI
 # displays is byte-for-byte what ran (no separate "reconstruction" to drift).
 def _pipe_busca_semantica(consulta: str) -> list:
+    # The query text is embedded by Voyage (autoEmbed): PII-masked (ADR-004).
+    # mask_pii is deterministic, so the trace rebuilds exactly what the tool ran;
+    # on a mask failure the tool does not run and the trace shows the placeholder.
     return [
-        {"$vectorSearch": {"index": "produtos_vector", "path": "descricao", "query": consulta,
+        {"$vectorSearch": {"index": "produtos_vector", "path": "descricao",
+                           "query": embed_query_text(consulta) or MASK_FAILED,
                            "numCandidates": 150, "limit": 10}},
         {"$project": {"_id": 0, "nome": 1, "marca": 1, "categoria": 1, "preco": 1,
                       "avaliacao_media": 1, "score": {"$meta": "vectorSearchScore"}}},
@@ -110,6 +115,8 @@ PIPELINE_BUILDERS = {
 def busca_semantica(consulta: str) -> str:
     """Busca produtos por similaridade semântica. Use para: 'academia em casa',
     'presente para o dia dos pais', 'home office', etc."""
+    if embed_query_text(consulta) is None:
+        return f"Erro: {PII_MASK_UNAVAILABLE}"
     if not _index_ready("produtos_vector", vector=True):
         return "Erro: índice de busca vetorial (produtos_vector) não está pronto ou o cluster está inacessível."
     results, err = safe_aggregate("produtos_vector", _pipe_busca_semantica(consulta))

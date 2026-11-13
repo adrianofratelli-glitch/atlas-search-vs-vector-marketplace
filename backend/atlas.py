@@ -366,6 +366,28 @@ def get_analytics(full: bool = False) -> dict:
     }
 
 
+# ── Text that leaves Atlas for Voyage (ADR-004) ──────────────────────────────
+# $vectorSearch with autoEmbed embeds `query` server-side by calling Voyage AI,
+# and $rerank sends it to the Voyage reranker: both are a third party. Every
+# such text goes through the same PII mask the LLM path uses (llm_gateway.
+# mask_pii) and the masked text is what the pipeline carries, so the MQL shown
+# is what ran and what Voyage saw. The lexical $search keeps the raw query: it
+# never leaves the cluster. Text without PII comes back byte-for-byte equal
+# (pinned by tests/test_embed_pii_mask.py over every eval query).
+PII_MASK_UNAVAILABLE = ("Máscara de PII indisponível: a consulta não foi enviada ao provedor de "
+                        "embeddings (Voyage), então a busca vetorial não rodou.")
+
+
+def embed_query_text(text: str) -> str | None:
+    """PII-masked text for autoEmbed / $rerank. None when the mask itself
+    failed: the caller skips the vector leg (fail-closed) instead of sending
+    the raw text or embedding a placeholder."""
+    from llm_gateway import MASK_FAILED, mask_pii  # lazy: keeps `import atlas` light
+
+    masked = mask_pii(text)
+    return None if masked == MASK_FAILED else masked
+
+
 def _num_candidates(limit: int, multiplier: int = 10) -> int:
     """numCandidates for $vectorSearch, derived from `limit`.
 
@@ -423,13 +445,19 @@ def find_similar(produto_id: str = None, nome: str = None, same_category: bool =
         return {"error": err or "Produto não encontrado", "base": None, "similares": []}
     b = base[0]
 
+    # The base description is catalog text, but it is still embedded by Voyage:
+    # same mask as any other autoEmbed query (ADR-004).
+    embed_text = embed_query_text(b.get("descricao", b["nome"]))
+    if embed_text is None:
+        return {"error": PII_MASK_UNAVAILABLE, "base": b, "similares": []}
+
     # Vector search on the meaning of the base product's description.
     # NATIVE PRE-FILTERING: the filter (category + in-stock) runs INSIDE
     # $vectorSearch — the index stores those fields as `filter`. Semantic plus
     # structured filtering in a single operation, with no application-side post-filter.
     vector_stage = {"$vectorSearch": {
         "index": "produtos_vector", "path": "descricao",
-        "query": b.get("descricao", b["nome"]),
+        "query": embed_text,
         # ~22x multiplier: recommendations run over a category pre-filter, so
         # extra oversampling compensates for candidates the filter discards.
         "numCandidates": _num_candidates(9, multiplier=22), "limit": 9,
@@ -770,9 +798,10 @@ def compare_search_vector(query: str, mode: str = "phrase") -> dict:
         {"$search": {"index": search_index, **search_op}},
         {"$limit": 10}, proj,
     ]
+    embed_text = embed_query_text(query)  # leaves Atlas for Voyage: masked (ADR-004)
     vector_pipeline = [
         {"$vectorSearch": {"index": "produtos_vector", "path": "descricao",
-                           "query": query,
+                           "query": embed_text,
                            # 15x multiplier: unfiltered comparison, matches the
                            # ratio this tab shipped with.
                            "numCandidates": _num_candidates(10, multiplier=15), "limit": 10}},
@@ -784,7 +813,9 @@ def compare_search_vector(query: str, mode: str = "phrase") -> dict:
     text_res, err_s = safe_aggregate(search_coll, search_pipeline)
     t_search = (time.time() - t0) * 1000
     t0 = time.time()
-    if err_s == ATLAS_UNREACHABLE:  # same cluster: the vector leg would wait the timeout again
+    if embed_text is None:  # mask failed: never send the raw text to Voyage
+        vec_res, err_v, vector_pipeline = None, PII_MASK_UNAVAILABLE, None
+    elif err_s == ATLAS_UNREACHABLE:  # same cluster: the vector leg would wait the timeout again
         vec_res, err_v = None, ATLAS_UNREACHABLE
     else:
         vec_res, err_v = safe_aggregate("produtos_vector", vector_pipeline)
@@ -807,6 +838,8 @@ def compare_search_vector(query: str, mode: str = "phrase") -> dict:
                      "rank_search": x["s"], "rank_vector": x["v"],
                      "both": bool(x["s"] and x["v"])} for x in fused],
         "mode": mode,
+        # True → PII was masked out of the text sent to Voyage (ADR-004).
+        "embed_query_masked": embed_text is not None and embed_text != query,
         # True → both engines queried the same 500K collection (honest fusion).
         "same_corpus": bool(same_index),
         "elapsed_ms": round(t_search + t_vector),
@@ -831,9 +864,13 @@ def hybrid_rrf(query: str, k=60, n_search=20, n_vector=20) -> dict:
         {"$project": {"_id": 0, "produto_id": 1, "nome": 1, "categoria": 1, "preco": 1,
                       "search_score": {"$meta": "searchScore"}}},
     ]
+    embed_text = embed_query_text(query)  # leaves Atlas for Voyage: masked (ADR-004)
+    if embed_text is None:
+        reason = f"busca vetorial: {PII_MASK_UNAVAILABLE}"
+        return {"error": reason, "reason": reason, "fused": [], "counts": {}}
     v_pipe = [
         {"$vectorSearch": {"index": "produtos_vector", "path": "descricao",
-                           "query": query, "numCandidates": _num_candidates(n_vector), "limit": n_vector}},
+                           "query": embed_text, "numCandidates": _num_candidates(n_vector), "limit": n_vector}},
         {"$project": {"_id": 0, "produto_id": 1, "nome": 1, "categoria": 1, "preco": 1,
                       "vector_score": {"$meta": "vectorSearchScore"}}},
     ]
@@ -874,6 +911,7 @@ def hybrid_rrf(query: str, k=60, n_search=20, n_vector=20) -> dict:
         "counts": {"only_search": only_s, "only_vector": only_v, "both": both,
                    "n_search": len(search_res), "n_vector": len(vector_res)},
         "same_corpus": bool(same_index),
+        "embed_query_masked": embed_text != query,
         "elapsed_ms": round(elapsed),
         "k": k,
     }
@@ -959,13 +997,9 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "rerank-2.5")
 
 
 def rerank_query_text(query: str) -> str | None:
-    """Text sent to the Voyage reranker (a third party): PII-masked first.
-    None when the mask itself failed, so the caller skips $rerank instead of
-    reranking against a placeholder."""
-    from llm_gateway import MASK_FAILED, mask_pii  # lazy: keeps `import atlas` light
-
-    masked = mask_pii(query)
-    return None if masked == MASK_FAILED else masked
+    """Text sent to the Voyage reranker: same mask as the embedding leg
+    (embed_query_text). None when the mask failed: the caller skips $rerank."""
+    return embed_query_text(query)
 
 
 def rerank_stages(query: str, num_docs: int) -> list:
@@ -1001,6 +1035,18 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
                        "reason": "sem $rankFusion nativo, o $rerank não roda" if rerank else None},
         }
 
+    embed_text = embed_query_text(query)  # leaves Atlas for Voyage: masked (ADR-004)
+    if embed_text is None:
+        # Fail-closed: no raw text to Voyage, and a hybrid without its vector
+        # leg would not be the hybrid the tab claims to show.
+        return {
+            "native": False, "error": PII_MASK_UNAVAILABLE, "reason": PII_MASK_UNAVAILABLE,
+            "fused": [], "counts": {}, "elapsed_ms": 0, "k": 60, "pipeline": None,
+            "embed_query_masked": False,
+            "rerank": {"requested": rerank, "applied": False, "model": RERANK_MODEL if rerank else None,
+                       "reason": PII_MASK_UNAVAILABLE if rerank else None},
+        }
+
     tiebreak = rank_fusion_tiebreak_supported(search_index)
     lexical_sort = {"sort": RANK_FUSION_LEXICAL_SORT} if tiebreak else {}
     pipeline = [
@@ -1015,7 +1061,7 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
                 ],
                 "semantico": [
                     {"$vectorSearch": {"index": "produtos_vector", "path": "descricao",
-                                       "query": query, "numCandidates": _num_candidates(limit), "limit": limit}},
+                                       "query": embed_text, "numCandidates": _num_candidates(limit), "limit": limit}},
                 ],
             }},
             "combination": {"weights": {"textual": 1, "semantico": 1}},
@@ -1023,14 +1069,8 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
         }},
     ]
     if rerank:
-        rerank_text = rerank_query_text(query)
-        if rerank_text is None:
-            plain = hybrid_native(query, limit=limit, rerank=False)
-            plain["rerank"] = {"requested": True, "applied": False, "model": RERANK_MODEL,
-                               "reason": ("Máscara de PII indisponível: o $rerank não rodou para não "
-                                          "enviar a consulta sem máscara à Voyage. Exibindo só o $rankFusion.")}
-            return plain
-        pipeline += rerank_stages(rerank_text, 2 * limit)
+        # Same masked text as the vector leg (mask failure already returned above).
+        pipeline += rerank_stages(embed_text, 2 * limit)
         project = {"rrf_score": 1, "rerank_score": {"$meta": "score"}, "scoreDetails": "$rrf_details"}
     else:
         project = {"score": {"$meta": "score"}, "scoreDetails": {"$meta": "scoreDetails"}}
@@ -1096,6 +1136,7 @@ def hybrid_native(query: str, limit: int = 20, rerank: bool = False) -> dict:
         "counts": {"only_search": only_s, "only_vector": only_v, "both": both,
                    "n_search": limit, "n_vector": limit},
         "elapsed_ms": round(elapsed), "k": 60, "pipeline": pipeline,
+        "embed_query_masked": embed_text != query,
         "rerank": {"requested": rerank, "applied": rerank, "model": RERANK_MODEL if rerank else None,
                    "reason": None},
     }
@@ -1148,6 +1189,12 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
             "elapsed_ms": fb.get("elapsed_ms", 0), "pipeline": None,
         }
 
+    embed_text = embed_query_text(query)  # leaves Atlas for Voyage: masked (ADR-004)
+    if embed_text is None:
+        return {"native": False, "error": PII_MASK_UNAVAILABLE, "reason": PII_MASK_UNAVAILABLE,
+                "fused": [], "counts": {}, "elapsed_ms": 0, "pipeline": None,
+                "embed_query_masked": False}
+
     pipeline = [
         {"$scoreFusion": {
             "input": {
@@ -1161,7 +1208,7 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
                     ],
                     "semantico": [
                         {"$vectorSearch": {"index": "produtos_vector", "path": "descricao",
-                                           "query": query, "numCandidates": _num_candidates(limit), "limit": limit}},
+                                           "query": embed_text, "numCandidates": _num_candidates(limit), "limit": limit}},
                     ],
                 },
                 "normalization": "minMaxScaler",
@@ -1226,4 +1273,5 @@ def hybrid_score_fusion(query: str, limit: int = 20) -> dict:
         "counts": {"only_search": only_s, "only_vector": only_v, "both": both,
                    "n_search": limit, "n_vector": limit},
         "elapsed_ms": round(elapsed), "pipeline": pipeline,
+        "embed_query_masked": embed_text != query,
     }

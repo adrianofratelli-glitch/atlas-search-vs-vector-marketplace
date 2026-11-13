@@ -93,11 +93,13 @@ class RerankPipeline(unittest.TestCase):
                 mock.patch.object(atlas, "get_search_indexes", return_value=INDEXES), \
                 mock.patch.object(atlas, "safe_aggregate", side_effect=fake):
             out = atlas.hybrid_native("fone", limit=10, rerank=True)
-        self.assertTrue(out["native"])
+        # ADR-004: the mask also guards the vector leg, so nothing reaches Voyage
+        # (no $vectorSearch, no $rerank) and the cause is named.
+        self.assertFalse(out["native"])
         self.assertFalse(out["rerank"]["applied"])
         self.assertIn("Máscara de PII indisponível", out["rerank"]["reason"])
-        self.assertTrue(all("$rerank" not in str(p) for p in executed))
-        self.assertNotIn(llm_gateway.MASK_FAILED, str(executed))
+        self.assertIn("Máscara de PII indisponível", out["error"])
+        self.assertEqual(executed, [])
 
     def test_cluster_down_or_timeout_is_not_blamed_on_rerank(self):
         for err in (atlas.ATLAS_UNREACHABLE, atlas.QUERY_TIMEOUT_MSG):
